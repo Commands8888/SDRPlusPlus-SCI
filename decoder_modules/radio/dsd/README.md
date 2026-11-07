@@ -21,16 +21,15 @@ time and its runtime library when installed).
 
 ## Linux packages and AppImage
 
-`Build Binaries` runs on pushes to this fork and on version tags. Its Linux
+`Build Binaries` runs on pull requests, version tags, and manual dispatch. Its Linux
 matrix builds DSD-enabled `.deb` packages for Debian bullseye, bookworm,
 trixie, and sid and Ubuntu focal, jammy, noble, and resolute on amd64 and
 arm64. It also builds DSD-enabled x86_64 and aarch64 AppImages with ITPP
 bundled. The separate `Build SCI Linux packages` workflow builds the five
 amd64 `.deb` packages for Debian bookworm/trixie and Ubuntu jammy/noble/resolute,
 plus the x86_64 AppImage. It runs on master pushes, publishes successful builds
-to the nightly release, and can also be started manually. It does not depend
-on the Windows/macOS/Android builds. On a local Noble system with the normal
-JP build dependencies and `libitpp-dev` installed:
+to the nightly release, and can also be started manually. On a local Noble
+system with the normal JP build dependencies and `libitpp-dev` installed:
 
 ```sh
 cmake --preset ci-linux-deb -DOPT_BUILD_DSD=ON
@@ -42,8 +41,8 @@ The resulting `build/sdrpp_debian_pkg.deb` contains the JP application and
 the Radio plugin with both DSD modes. The option `OPT_BUILD_DSD=OFF` leaves
 the original radio plugin without these modes. The option defaults to OFF;
 the Linux packaging workflows explicitly turn it on and install `libitpp-dev`.
-Android, Windows, and macOS continue to build with the original radio plugin;
-the Android APK does not include DSD until ITPP is available for its NDK build.
+The GitHub Actions workflows package Linux only. JP's source files for other
+platforms remain in the repository; no Windows, macOS, or Android CI jobs run.
 
 ## Updating from the JP parent repository
 
@@ -55,9 +54,8 @@ If JP edits the same lines as SCI, the sync run reports a merge conflict for
 manual resolution. GitHub may require enabling Actions to create pull requests
 under repository Settings > Actions > General > Workflow permissions.
 
-On each push to master, `Build Binaries` can refresh the nightly release when
-its full platform matrix succeeds. The Android workflow builds APKs, but
-signed release APKs require signing secrets in the repository settings.
+On each push to master, `Build SCI Linux packages` refreshes the nightly
+release after its five `.deb` builds and AppImage succeed.
 
 For a tagged release, update `VERSION_STR` in `core/src/version.h`, commit and
 push, then create and push a matching `v<version>` tag. The workflow checks

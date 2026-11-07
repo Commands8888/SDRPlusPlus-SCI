@@ -1,20 +1,17 @@
 name: Build Binaries
 
 on:
+    # The smaller Linux workflow handles every master push; this matrix
+    # validates pull requests and publishes version tags.
     push:
-        branches-ignore:
-        - nightly
         tags:
         - 'v[0-9]*.[0-9]*.[0-9]*'
     pull_request:
-        branches-ignore:
-        - nightly
+        branches: [master]
     workflow_dispatch:
 
-# Least privilege at the workflow level: the 20+ build jobs (which run
-# third-party code through Docker/Gradle) only need read. contents: write is
-# granted per-job on update_nightly_release/create_release, the only jobs that
-# publish releases.
+# Linux build jobs only need read access. The tagged-release job gets
+# contents: write separately for publishing artifacts.
 permissions:
   contents: read
   actions: read      # Standard workflow permission
@@ -45,7 +42,7 @@ jobs:
             echo "version_full=$VERSION_FULL" >> $GITHUB_OUTPUT
 
         # On PRs, AppImage builds are gated on whether AppImage-relevant files changed
-        # (saves ~30 min of CI on the average PR). On push/tag/dispatch, always build.
+        # (saves ~30 min of CI on the average PR). On tag/dispatch, always build.
         - id: filter
           run: |
             if [ "${{ github.event_name }}" != "pull_request" ]; then
@@ -86,89 +83,6 @@ jobs:
               exit 1
             fi
             echo "Tag ${TAG} matches version.h — OK"
-
-    build_windows:
-        strategy:
-            fail-fast: false
-            matrix:
-                include:
-                    - arch: x64
-                      vcvars_arg: x64
-                      preset: msvc-x64-release
-                      deps_build_dir: build-default-Release
-                    - arch: arm64
-                      vcvars_arg: x64_arm64
-                      preset: msvc-arm64-release
-                      deps_build_dir: build-default-arm64-Release
-        needs: [prepare]
-        runs-on: windows-2025-vs2026
-
-        steps:
-        - uses: actions/checkout@v5
-
-        - uses: actions/setup-python@v6
-          with:
-            python-version: '3.12'
-
-        - name: Install Python package for volk
-          shell: pwsh
-          run: |
-            & "$env:pythonLocation\python.exe" -m pip install --user mako
-            & "$env:pythonLocation\python.exe" -c "import sys, mako; print('VOLK Python:', sys.executable); print('Mako:', mako.__version__)"
-
-        - name: Cache deps
-          uses: ./.github/actions/deps-cache
-          with:
-              destdir-path: deps/${{ matrix.deps_build_dir }}/destdir
-              key-suffix: windows-${{ matrix.arch }}
-
-        - name: Configure
-          working-directory: ${{ github.workspace }}
-          shell: cmd
-          run: |
-            call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" ${{ matrix.vcvars_arg }}
-            cmake --preset ${{ matrix.preset }} "-DPython3_EXECUTABLE=%pythonLocation%\python.exe"
-
-        - name: Build
-          working-directory: ${{ github.workspace }}
-          shell: cmd
-          run: |
-            call "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" ${{ matrix.vcvars_arg }}
-            cmake --build build-${{ matrix.preset }} --config Release --verbose
-
-        - name: Create Archive
-          working-directory: ${{runner.workspace}}
-          run: '&($Env:GITHUB_WORKSPACE + "/make_windows_package.ps1") ($Env:GITHUB_WORKSPACE + "/build-${{ matrix.preset }}") ($Env:GITHUB_WORKSPACE + "/root") Release ${{ matrix.arch }}'
-
-        # Renamed to the artifact name here (rather than in create_full_archive)
-        # so the file inside the artifact already has its final published name.
-        - name: Rename Archive
-          working-directory: ${{runner.workspace}}
-          run: Move-Item sdrpp_windows_${{ matrix.arch }}.zip sdrpp-jp-${{ needs.prepare.outputs.version_full }}-windows-${{ matrix.arch }}.zip
-
-        - name: Save Archive
-          uses: actions/upload-artifact@v6
-          with:
-              name: sdrpp-jp-${{ needs.prepare.outputs.version_full }}-windows-${{ matrix.arch }}
-              path: ${{runner.workspace}}/sdrpp-jp-${{ needs.prepare.outputs.version_full }}-windows-${{ matrix.arch }}.zip
-
-    build_macos:
-        strategy:
-            fail-fast: false
-            matrix:
-                include:
-                    - runner: macos-15-intel
-                      artifact_suffix: macos-intel
-                      preset: ci-macos-intel
-                    - runner: macos-15
-                      artifact_suffix: macos-arm
-                      preset: ci-macos-arm
-        needs: [prepare]
-        uses: ./.github/workflows/build_macos.yml
-        with:
-            runner: ${{ matrix.runner }}
-            artifact: sdrpp-jp-${{ needs.prepare.outputs.version_full }}-${{ matrix.artifact_suffix }}
-            preset: ${{ matrix.preset }}
 
     build_linux:
         strategy:
@@ -307,34 +221,13 @@ jobs:
             artifact: sdrpp-jp-${{ needs.prepare.outputs.version_full }}-${{ matrix.artifact_suffix }}
             version_full: ${{ needs.prepare.outputs.version_full }}
 
-    build_android:
-        needs: [prepare]
-        uses: ./.github/workflows/build_android.yml
-        with:
-            version_full: ${{ needs.prepare.outputs.version_full }}
-        secrets:
-            ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-            ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-            ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-            ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-
     create_full_archive:
-        needs: [
-          'prepare',
-          'build_windows',
-          'build_macos',
-          'build_linux',
-          'build_appimage',
-          'build_android'
-        ]
+        needs: [prepare, build_linux, build_appimage]
         # build_appimage may be skipped on PRs that don't touch AppImage files.
         if: |
           always() &&
           needs.prepare.result == 'success' &&
-          needs.build_windows.result == 'success' &&
-          needs.build_macos.result == 'success' &&
           needs.build_linux.result == 'success' &&
-          needs.build_android.result == 'success' &&
           (needs.build_appimage.result == 'success' || needs.build_appimage.result == 'skipped')
         runs-on: ubuntu-latest
 
@@ -346,8 +239,8 @@ jobs:
         # Every build job names its output file after its own artifact name
         # (sdrpp-jp-${VER}-<suffix>.<ext>), so merging them by pattern needs
         # no per-artifact rename table here — new matrix entries just flow
-        # through. Optional artifacts (AppImages, signed release APKs) simply
-        # aren't present when skipped; nothing to guard.
+        # through. AppImages are optional on PRs and skipped unless relevant
+        # paths changed.
         - name: Download All Builds
           uses: actions/download-artifact@v7
           with:
@@ -365,47 +258,6 @@ jobs:
             name: sdrpp-jp-${{ needs.prepare.outputs.version_full }}-all
             path: sdrpp_all/
 
-    update_nightly_release:
-        needs: [prepare, create_full_archive]
-        runs-on: ubuntu-latest
-        permissions:
-          contents: write
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
-
-        steps:
-        # Only the merged -all bundle is needed here; pulling it by name (into a
-        # dir of the same name) avoids re-downloading all ~25 per-platform
-        # artifacts that create_full_archive already merged into it.
-        - name: Download All Builds
-          uses: actions/download-artifact@v7
-          with:
-            name: sdrpp-jp-${{ needs.prepare.outputs.version_full }}-all
-            path: sdrpp-jp-${{ needs.prepare.outputs.version_full }}-all
-
-        - name: Create or Update Nightly Release
-          env:
-            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-            VER: ${{ needs.prepare.outputs.version_full }}
-          run: |
-            NOTES="Nightly build — v${VER} (commit ${{ github.sha }}) built $(date -u '+%Y-%m-%d %H:%M UTC')"
-
-            # Create the release if it does not exist yet
-            gh release view nightly -R ${{github.repository}} 2>/dev/null || \
-              gh release create nightly -R ${{github.repository}} --title "Nightly Build" --notes "$NOTES" --prerelease
-
-            # Always refresh the release notes so they reflect the latest commit
-            gh release edit nightly -R ${{github.repository}} --notes "$NOTES"
-
-            # Remove assets from the previous build that are no longer produced
-            gh release view nightly -R ${{github.repository}} --json assets --jq '.assets[].name' | while read -r asset; do
-              if [ -n "$asset" ] && [ ! -f "sdrpp-jp-${VER}-all/$asset" ]; then
-                gh release delete-asset nightly "$asset" -R ${{github.repository}} --yes
-              fi
-            done
-
-            # Upload artifacts (--clobber overwrites existing files with the same name)
-            gh release upload nightly sdrpp-jp-${VER}-all/* -R ${{github.repository}} --clobber
-
     create_release:
         needs: [prepare, create_full_archive]
         runs-on: ubuntu-latest
@@ -416,7 +268,7 @@ jobs:
         steps:
         # Only the merged -all bundle is needed here; pulling it by name (into a
         # dir of the same name) avoids re-downloading all ~25 per-platform
-        # artifacts that create_full_archive already merged into it.
+        # Linux artifacts that create_full_archive already merged into it.
         - name: Download All Builds
           uses: actions/download-artifact@v7
           with:

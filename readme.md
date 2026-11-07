@@ -177,5 +177,5 @@ Thanks and due respect to:
 
 ## Feedback
 
-Found an issue? File an [issue](https://github.com/jprincl/SDRPlusPlus-jp/issues).
+Found an issue? File an [issue](https://github.com/Commands8888/SDRPlusPlus-SCI).
 

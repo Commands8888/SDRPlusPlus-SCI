@@ -13,10 +13,30 @@ CURL_DEP_ARG=""
 # System build links the distro libcurl; bundled builds it from source (needs
 # libssl-dev) so the distro -dev headers are dead weight there.
 CURL_APT="libcurl4-openssl-dev"
+DSD_APT=""
+DSD_CMAKE_ARG=""
+if [ "${BUILD_DSD:-false}" = "true" ]; then
+    DSD_APT="libitpp-dev"
+    DSD_CMAKE_ARG="-DOPT_BUILD_DSD=ON"
+fi
 if [ "$CURL_SOURCE" = "bundled" ]; then
     EXTRA_APT="${EXTRA_APT:-} libssl-dev"
     CURL_DEP_ARG="-DSDRPP_DEP_FORCE_BUNDLED=libcurl"
     CURL_APT=""
+fi
+
+# Bullseye security packages moved to the Debian archive after LTS ended.
+# Its old package indexes still exist on deb.debian.org, but the referenced
+# .debs are gone there; use the preserved archive for this build container.
+if [ -f /etc/os-release ] && ( . /etc/os-release; [ "$ID:$VERSION_CODENAME" = debian:bullseye ] ); then
+    for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+        [ -f "$source" ] || continue
+        sed -i \
+            -e 's|http://deb.debian.org/debian-security|http://archive.debian.org/debian-security|g' \
+            -e 's|https://deb.debian.org/debian-security|https://archive.debian.org/debian-security|g' \
+            "$source"
+    done
+    printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99bullseye-archive
 fi
 
 # apt-get update immediately before install is not enough: when the archive is
@@ -41,7 +61,7 @@ apt_install_with_refresh() {
 # Install dependencies and tools
 apt_install_with_refresh build-essential cmake git pkg-config libfftw3-dev libglfw3-dev ${VOLK_PACKAGE} liborc-0.4-dev libzstd-dev ${CURL_APT} libairspy-dev libairspyhf-dev \
     libiio-dev libad9361-dev librtaudio-dev libhackrf-dev librtlsdr-dev libbladerf-dev liblimesuite-dev p7zip-full wget portaudio19-dev \
-    libcodec2-dev libflac-dev libopus-dev libogg-dev autoconf libtool xxd libspdlog-dev ${EXTRA_APT}
+    libcodec2-dev libflac-dev libopus-dev libogg-dev ${DSD_APT} autoconf libtool xxd libspdlog-dev ${EXTRA_APT}
 
 # Older base images (Debian bullseye, Ubuntu focal) ship a cmake too old for
 # the --preset CLI (3.19+) and CMakePresets v3 (3.21+) that deps/ relies on.
@@ -63,7 +83,7 @@ fi
 git config --global --add safe.directory /root/SDRPlusPlus
 
 cd SDRPlusPlus
-cmake --preset ci-linux-deb ${CURL_DEP_ARG}
+cmake --preset ci-linux-deb ${CURL_DEP_ARG} ${DSD_CMAKE_ARG}
 cd build
 make VERBOSE=1 -j"$(nproc)"
 cpack

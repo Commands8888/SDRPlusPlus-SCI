@@ -1,16 +1,19 @@
-name: Build Ubuntu Deb
+name: Build SCI Linux packages
 
-# Standalone, manually-triggered build of just the Ubuntu 24.04 (noble)
-# amd64 .deb package. Exists so a desktop package can be produced without
-# running the full "Build Binaries" workflow, which fans out across ~16
-# Linux variants plus Windows, macOS and Android and hogs the runner queue.
+# Independent Linux release path: unrelated Windows/macOS/Android failures in
+# the complete JP matrix must not block SCI's .deb and AppImage downloads.
 #
-# This calls the same reusable build_linux.yml that Build Binaries uses, so
-# the resulting package is identical to the one that workflow would produce
-# for this distribution - it just skips everything else.
+# Calls the same reusable builders as Build Binaries. On every master update,
+# upload the Linux builds to the nightly release; manual runs keep artifacts.
 
 on:
+    push:
+        branches: [master]
     workflow_dispatch:
+
+permissions:
+    contents: read
+    actions: read
 
 env:
     FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -34,15 +37,40 @@ jobs:
 
     build_deb:
         needs: [prepare]
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - base_image: debian:bookworm
+                      suffix: debian-bookworm-amd64
+                      volk_package: libvolk2-dev
+                      curl_source: bundled
+                    - base_image: debian:trixie
+                      suffix: debian-trixie-amd64
+                      volk_package: libvolk-dev
+                      curl_source: system
+                    - base_image: ubuntu:jammy
+                      suffix: ubuntu-jammy-amd64
+                      volk_package: libvolk2-dev
+                      curl_source: bundled
+                    - base_image: ubuntu:noble
+                      suffix: ubuntu-noble-amd64
+                      volk_package: libvolk-dev
+                      curl_source: system
+                    - base_image: ubuntu:resolute
+                      suffix: ubuntu-resolute-amd64
+                      volk_package: libvolk-dev
+                      curl_source: system
         uses: ./.github/workflows/build_linux.yml
         with:
-            base_image: ubuntu:noble
+            base_image: ${{ matrix.base_image }}
             runner: ubuntu-latest
-            artifact: sdrpp-jp-${{ needs.prepare.outputs.version_full }}-ubuntu-noble-amd64
-            volk_package: libvolk-dev
+            artifact: sdrpp-jp-${{ needs.prepare.outputs.version_full }}-${{ matrix.suffix }}
+            volk_package: ${{ matrix.volk_package }}
             extra_apt: ''
-            curl_source: system
+            curl_source: ${{ matrix.curl_source }}
             version_full: ${{ needs.prepare.outputs.version_full }}
+            build_dsd: true
 
     # Also built here because the .deb cannot be installed alongside an
     # existing upstream SDR++ package: both install /usr/bin/sdrpp, so dpkg
@@ -58,3 +86,31 @@ jobs:
             arch: x86_64
             artifact: sdrpp-jp-${{ needs.prepare.outputs.version_full }}-linux-appimage-x86_64
             version_full: ${{ needs.prepare.outputs.version_full }}
+
+    publish_nightly:
+        needs: [prepare, build_deb, build_appimage]
+        if: github.event_name == 'push'
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            actions: read
+        steps:
+            - uses: actions/download-artifact@v7
+              with:
+                  path: packages
+                  pattern: sdrpp-jp-${{ needs.prepare.outputs.version_full }}-*
+                  merge-multiple: true
+
+            - name: Publish Linux nightly downloads
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  VER: ${{ needs.prepare.outputs.version_full }}
+              run: |
+                  set -euo pipefail
+                  notes="SCI Linux nightly ${VER} (DSD + oldDSD); commit $GITHUB_SHA"
+                  if ! gh release view nightly --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+                      gh release create nightly --repo "$GITHUB_REPOSITORY" \
+                          --title 'SCI Nightly' --prerelease --notes "$notes"
+                  fi
+                  gh release edit nightly --repo "$GITHUB_REPOSITORY" --notes "$notes"
+                  gh release upload nightly packages/* --repo "$GITHUB_REPOSITORY" --clobber

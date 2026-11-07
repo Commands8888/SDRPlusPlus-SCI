@@ -27,6 +27,10 @@ on:
             version_full:
                 required: true
                 type: string
+            build_dsd:
+                required: false
+                type: boolean
+                default: false
 
 env:
     FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -56,6 +60,7 @@ jobs:
               --env EXTRA_APT="${{ inputs.extra_apt }}" \
               --env CURL_SOURCE="${{ inputs.curl_source }}" \
               --env VERSION_FULL="${{ inputs.version_full }}" \
+              --env BUILD_DSD="${{ inputs.build_dsd }}" \
               --env GITHUB_ACTIONS \
               --env GITHUB_REF_TYPE \
               sdrpp_build /root/do_build.sh

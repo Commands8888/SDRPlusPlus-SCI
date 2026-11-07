@@ -25,6 +25,20 @@ if [ "$CURL_SOURCE" = "bundled" ]; then
     CURL_APT=""
 fi
 
+# Bullseye security packages moved to the Debian archive after LTS ended.
+# Its old package indexes still exist on deb.debian.org, but the referenced
+# .debs are gone there; use the preserved archive for this build container.
+if [ -f /etc/os-release ] && ( . /etc/os-release; [ "$ID:$VERSION_CODENAME" = debian:bullseye ] ); then
+    for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+        [ -f "$source" ] || continue
+        sed -i \
+            -e 's|http://deb.debian.org/debian-security|http://archive.debian.org/debian-security|g' \
+            -e 's|https://deb.debian.org/debian-security|https://archive.debian.org/debian-security|g' \
+            "$source"
+    done
+    printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99bullseye-archive
+fi
+
 # apt-get update immediately before install is not enough: when the archive is
 # mid-publish, the index can still reference a package revision whose .deb was
 # already pruned from the pool, and the install 404s (Acquire::Retries only

@@ -25,9 +25,12 @@ time and its runtime library when installed).
 matrix builds DSD-enabled `.deb` packages for Debian bullseye, bookworm,
 trixie, and sid and Ubuntu focal, jammy, noble, and resolute on amd64 and
 arm64. It also builds DSD-enabled x86_64 and aarch64 AppImages with ITPP
-bundled. The separate `Build Ubuntu Deb` workflow can be started manually to
-build just the Noble amd64 package and x86_64 AppImage. On a local Noble system
-with the normal JP build dependencies and `libitpp-dev` installed:
+bundled. The separate `Build SCI Linux packages` workflow builds the five
+amd64 `.deb` packages for Debian bookworm/trixie and Ubuntu jammy/noble/resolute,
+plus the x86_64 AppImage. It runs on master pushes, publishes successful builds
+to the nightly release, and can also be started manually. It does not depend
+on the Windows/macOS/Android builds. On a local Noble system with the normal
+JP build dependencies and `libitpp-dev` installed:
 
 ```sh
 cmake --preset ci-linux-deb -DOPT_BUILD_DSD=ON
@@ -46,14 +49,14 @@ the Android APK does not include DSD until ITPP is available for its NDK build.
 
 `Sync JP upstream` checks the original JP repository every Monday, and can
 also be run manually in the Actions tab. When JP has new commits, it merges
-them into a branch, opens a pull request in this fork, and starts the Noble
+them into a branch, opens a pull request in this fork, and starts the Linux
 package/AppImage build. Review the PR and its build before merging into master.
 If JP edits the same lines as SCI, the sync run reports a merge conflict for
 manual resolution. GitHub may require enabling Actions to create pull requests
 under repository Settings > Actions > General > Workflow permissions.
 
-On each push to master, `Build Binaries` also refreshes the nightly release
-after every supported build succeeds. The Android workflow builds APKs, but
+On each push to master, `Build Binaries` can refresh the nightly release when
+its full platform matrix succeeds. The Android workflow builds APKs, but
 signed release APKs require signing secrets in the repository settings.
 
 For a tagged release, update `VERSION_STR` in `core/src/version.h`, commit and

@@ -2,6 +2,11 @@
 
 Major releases only. For the detailed per-release history including alpha releases, see [changelog-full.md](changelog-full.md).
 
+## v1.7.2 - SDRPP-FULL
+
+Fix the oversized title spacing on the loading screen and credits dialog.
+Frequency Manager now handles CW-R, DSD, and oldDSD bookmarks safely.
+
 ## v1.7.1 - SDRPP-FULL
 
 The Linux application, launcher, and packages use the SDRPP-FULL name. DSD and

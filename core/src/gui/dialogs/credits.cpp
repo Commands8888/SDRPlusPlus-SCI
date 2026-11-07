@@ -35,9 +35,9 @@ namespace credits {
         ImGui::BeginPopupModal("Credits", NULL, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove);
 
         ImGui::PushFont(style::hugeFont);
-        ImGui::TextUnformatted("SDRPP-FULL      ");
+        ImGui::TextUnformatted("SDRPP-FULL");
         ImGui::PopFont();
-        ImGui::SameLine();
+        ImGui::SameLine(0.0f, style::dp(16.0f));
         ImGui::Image(icons::LOGO, imageSize);
         ImGui::Spacing();
         ImGui::Spacing();

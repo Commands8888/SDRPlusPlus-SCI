@@ -37,6 +37,9 @@ struct BookmarkRectangle {
 extern const char* demodModeList[];
 extern const char* demodModeListTxt;
 extern const int demodModeCount;
+const char* demodModeName(int mode);
+int demodModeIndex(int mode);
+int demodModeId(int index);
 
 FrequencyBookmark bookmarkFromJson(const json& j);
 json bookmarkToJson(const FrequencyBookmark& bm);

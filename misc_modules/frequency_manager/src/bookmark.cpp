@@ -10,14 +10,38 @@ const char* demodModeList[] = {
     "USB",
     "CW",
     "LSB",
-    "RAW"
+    "RAW",
+    "CW-R",
+    "DSD",
+    "oldDSD"
 };
 
-const char* demodModeListTxt = "NFM\0WFM\0AM\0DSB\0USB\0CW\0LSB\0RAW\0";
+const char* demodModeListTxt = "NFM\0WFM\0AM\0DSB\0USB\0CW\0LSB\0RAW\0CW-R\0DSD\0oldDSD\0";
 
 // demodModeList has no terminator and callers see it as an incomplete
 // array type, so they cannot size it themselves.
 const int demodModeCount = (int)(sizeof(demodModeList) / sizeof(demodModeList[0]));
+
+// These IDs match RadioModule::DemodID. DSD IDs are intentionally outside
+// the contiguous analog range, so never index an array with a saved mode ID.
+static const int demodModeIds[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 0x1301, 0x1302 };
+static_assert(sizeof(demodModeIds) / sizeof(demodModeIds[0]) == sizeof(demodModeList) / sizeof(demodModeList[0]));
+
+int demodModeIndex(int mode) {
+    for (int i = 0; i < demodModeCount; i++) {
+        if (demodModeIds[i] == mode) { return i; }
+    }
+    return -1;
+}
+
+const char* demodModeName(int mode) {
+    int index = demodModeIndex(mode);
+    return (index >= 0) ? demodModeList[index] : "Unknown";
+}
+
+int demodModeId(int index) {
+    return (index >= 0 && index < demodModeCount) ? demodModeIds[index] : 7;
+}
 
 FrequencyBookmark bookmarkFromJson(const json& j) {
     FrequencyBookmark bm;

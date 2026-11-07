@@ -5,6 +5,7 @@ The detailed per-release history of the SDR++ iak fork, including alpha and beta
 ## v1.7.2 - 2026-11-07
 
 - Render the SDRPP-FULL title without repeated fallback glyphs in the loading screen and credits dialog.
+- Fix Frequency Manager's out-of-bounds mode lookup for CW-R, DSD, and oldDSD bookmarks, and display those modes in its editor.
 
 ## v1.7.1 - 2026-11-07
 

@@ -49,11 +49,7 @@ const char* exportScopesTxt = "Selected bookmarks\0Current list\0All lists\0";
 // kilohertz is plenty. Looked up by name rather than by a hardcoded index,
 // so reordering demodModeList cannot quietly change the meaning.
 static double tunedTolerance(int mode) {
-    // demodModeList is a plain array with no terminator, and mode comes
-    // straight out of the bookmark JSON without being range-checked, so
-    // bound it here rather than reading past the end.
-    const int modeCount = demodModeCount;
-    if (mode >= 0 && mode < modeCount && strcmp(demodModeList[mode], "WFM") == 0) {
+    if (strcmp(demodModeName(mode), "WFM") == 0) {
         return 10000.0;
     }
     return 1000.0;
@@ -289,7 +285,10 @@ private:
             ImGui::LeftLabel("Mode");
             ImGui::TableSetColumnIndex(1);
             ImGui::SetNextItemWidth(editWinSize);
-            ImGui::Combo(("##freq_manager_edit_mode" + name).c_str(), &editedBookmark.mode, demodModeListTxt);
+            int modeIndex = demodModeIndex(editedBookmark.mode);
+            if (ImGui::Combo(("##freq_manager_edit_mode" + name).c_str(), &modeIndex, demodModeListTxt)) {
+                editedBookmark.mode = demodModeId(modeIndex);
+            }
 
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
@@ -725,7 +724,7 @@ private:
                 }
 
                 ImGui::TableSetColumnIndex(1);
-                ImGui::Text("%s %s", utils::formatFreq(cbm.frequency).c_str(), demodModeList[cbm.mode]);
+                ImGui::Text("%s %s", utils::formatFreq(cbm.frequency).c_str(), demodModeName(cbm.mode));
 
                 if (_this->scrollToClickedBookmark && cbm.selected) {
                     ImGui::SetScrollHereY(0.5f);
@@ -1101,7 +1100,7 @@ private:
         ImGui::Text("List: %s", hoveredBookmark.listName.c_str());
         ImGui::Text("Frequency: %s", utils::formatFreq(hoveredBookmark.bookmark.frequency).c_str());
         ImGui::Text("Bandwidth: %s", utils::formatFreq(hoveredBookmark.bookmark.bandwidth).c_str());
-        ImGui::Text("Mode: %s", demodModeList[hoveredBookmark.bookmark.mode]);
+        ImGui::Text("Mode: %s", demodModeName(hoveredBookmark.bookmark.mode));
         if (hoveredBookmark.bookmark.startTime != 0 || hoveredBookmark.bookmark.endTime != 0) {
             ImGui::Text("Time: %04d - %04d UTC", hoveredBookmark.bookmark.startTime, hoveredBookmark.bookmark.endTime);
         }

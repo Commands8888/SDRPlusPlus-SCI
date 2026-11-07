@@ -5,6 +5,7 @@ Major releases only. For the detailed per-release history including alpha releas
 ## v1.7.2 - SDRPP-FULL
 
 Fix the oversized title spacing on the loading screen and credits dialog.
+Frequency Manager now handles CW-R, DSD, and oldDSD bookmarks safely.
 
 ## v1.7.1 - SDRPP-FULL
 

@@ -167,11 +167,13 @@ Please see [upstream project page](https://github.com/AlexandreRouma/SDRPlusPlus
 
 Thanks and due respect to:
  
-* Original author, Alexandre Rouma, for his great [work](https://github.com/AlexandreRouma/SDRPlusPlus). Due credits go to all contributors in the upstream project. 
-* Hans Summers G0UPL [QRP Labs QMX Transceiver](https://qrp-labs.com/qmx).
-* Lee Salzman for the [enet](https://github.com/lsalzman/enet) UDP networking library used for QMX streaming.
-* Vojtech Bubnik (https://github.com/bubnikv/SDRPlusPlus-iak) for improvements original SDR++ (better UI for Android, frequency and band selector and many more)
-* F4JTV (https://github.com/F4JTV/SDRPlusPlus_SwissKnifeEdition) for FT8, WEFAX, SSTV and RTTY decoder modules 
+* Original author, Alexandre Rouma—thank you for your excellent work! (https://github.com/AlexandreRouma/SDRPlusPlus). Credit is due to all contributors to the original project.
+* Hans Summers G0UPL [QRPLabs QMX Transceiver](https://qrp-labs.com/qmx) Many thanks to QRPLabs and for the QMX transceiver.
+* Lee Salzman for [enet](https://github.com/lsalzman/enet). Many thanks for the UDP network library used for QMX streaming.
+* Vojtech Bubnik (https://github.com/bubnikv/SDRPlusPlus-iak). Thank you for the excellent improvements to the original SDR++ (enhanced user interface for Android, frequency and band selector, and much more).
+* F4JTV (https://github.com/F4JTV/SDRPlusPlus_SwissKnifeEdition) Thanks for the FT8, WEFAX, SSTV, and RTTY decoder modules.
+* jprincl (https://github.com/jprincl/SDRPlusPlus-jp) Thanks for the excellent and impressive built-in modules included in this fork.
+* Sanny Sannoff (https://github.com/sannysanoff/SDRPlusPlusBrown) Thanks for DSD and oldDSD; excellent built-in digital decoders have been added to this branch.
 
 ## Feedback
 

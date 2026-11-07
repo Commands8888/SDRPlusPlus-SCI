@@ -83,7 +83,7 @@ namespace core {
     std::string getModulesDirectory() {
 #if defined(__linux__) && defined(BUILD_APPIMAGE)
         if (const char* appdir = getenv("APPDIR")) {
-            return std::string(appdir) + "/usr/lib/sdrpp-jp/plugins";
+            return std::string(appdir) + "/usr/lib/sdrpp-full/plugins";
         }
 #endif
         return resolveConfigPath(core::configManager.conf["modulesDirectory"]);
@@ -92,7 +92,7 @@ namespace core {
     std::string getResourcesDirectory() {
 #if defined(__linux__) && defined(BUILD_APPIMAGE)
         if (const char* appdir = getenv("APPDIR")) {
-            return std::string(appdir) + "/usr/share/sdrpp-jp";
+            return std::string(appdir) + "/usr/share/sdrpp-full";
         }
 #endif
         return resolveConfigPath(core::configManager.conf["resourcesDirectory"]);
@@ -107,7 +107,7 @@ int sdrpp_main(int argc, char* argv[]) {
     SetConsoleOutputCP(CP_UTF8);
 #endif
 
-    flog::info("SDR++ jp v" VERSION_STR);
+    flog::info("SDRPP v" VERSION_STR);
 
     // Define command line options and parse arguments
     core::args.defineAll();
@@ -131,6 +131,29 @@ int sdrpp_main(int argc, char* argv[]) {
 
     // Set error mode to avoid abnoxious popups
     SetErrorMode(SEM_NOOPENFILEERRORBOX | SEM_NOGPFAULTERRORBOX | SEM_FAILCRITICALERRORS);
+#endif
+
+    // Copy existing JP settings on the first FULL launch. Keep the original
+    // directory as a backup and leave explicitly selected --root paths alone.
+#if defined(__linux__)
+    if (const char* home = getenv("HOME")) {
+#if defined(BUILD_APPIMAGE)
+        const std::filesystem::path newDefault = std::filesystem::path(home) / ".config/sdrpp-full-appimage";
+        const std::filesystem::path oldDefault = std::filesystem::path(home) / ".config/sdrpp-jp-appimage";
+#else
+        const std::filesystem::path newDefault = std::filesystem::path(home) / ".config/sdrpp-full";
+        const std::filesystem::path oldDefault = std::filesystem::path(home) / ".config/sdrpp-jp";
+#endif
+        if (std::filesystem::path((std::string)core::args["root"]) == std::filesystem::absolute(newDefault) &&
+            !std::filesystem::exists(newDefault) && std::filesystem::is_directory(oldDefault)) {
+            std::error_code ec;
+            std::filesystem::copy(oldDefault, newDefault,
+                std::filesystem::copy_options::recursive | std::filesystem::copy_options::copy_symlinks, ec);
+            if (ec) {
+                flog::warn("Could not import previous settings from {0}: {1}", oldDefault.string(), ec.message());
+            }
+        }
+    }
 #endif
 
     // Check root directory
@@ -339,8 +362,8 @@ int sdrpp_main(int argc, char* argv[]) {
     defConfig["resourcesDirectory"] = root + "/res";
 #else
     // Linux, BSD, etc.
-    defConfig["modulesDirectory"] = INSTALL_PREFIX "/lib/sdrpp-jp/plugins";
-    defConfig["resourcesDirectory"] = INSTALL_PREFIX "/share/sdrpp-jp";
+    defConfig["modulesDirectory"] = INSTALL_PREFIX "/lib/sdrpp-full/plugins";
+    defConfig["resourcesDirectory"] = INSTALL_PREFIX "/share/sdrpp-full";
 #endif
 
     // Load config
@@ -348,6 +371,25 @@ int sdrpp_main(int argc, char* argv[]) {
     core::configManager.setPath(root + "/config.json");
     bool firstStart = !std::filesystem::exists(root + "/config.json");
     core::configManager.load(defConfig);
+
+#if defined(__linux__)
+    // The imported config may contain absolute directories from the JP
+    // installation. Only replace the exact old defaults; custom paths stay.
+    bool migratedPaths = false;
+    if (core::configManager.conf.contains("modulesDirectory") &&
+        core::configManager.conf["modulesDirectory"].is_string() &&
+        core::configManager.conf["modulesDirectory"] == INSTALL_PREFIX "/lib/sdrpp-jp/plugins") {
+        core::configManager.conf["modulesDirectory"] = defConfig["modulesDirectory"];
+        migratedPaths = true;
+    }
+    if (core::configManager.conf.contains("resourcesDirectory") &&
+        core::configManager.conf["resourcesDirectory"].is_string() &&
+        core::configManager.conf["resourcesDirectory"] == INSTALL_PREFIX "/share/sdrpp-jp") {
+        core::configManager.conf["resourcesDirectory"] = defConfig["resourcesDirectory"];
+        migratedPaths = true;
+    }
+    if (migratedPaths) { core::configManager.save(); }
+#endif
 
 
     core::configManager.enableAutoSave();

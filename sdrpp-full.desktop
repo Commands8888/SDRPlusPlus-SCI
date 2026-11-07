@@ -2,12 +2,12 @@
 Version=1.0
 Type=Application
 Terminal=false
-Exec=@CMAKE_INSTALL_PREFIX@/bin/sdrpp-jp
-Name=SDR++ jp
+Exec=@CMAKE_INSTALL_PREFIX@/bin/sdrpp-full
+Name=SDRPP-FULL
 GenericName=SDR Receiver
 Comment=Software defined radio receiver
-Icon=@CMAKE_INSTALL_PREFIX@/share/sdrpp-jp/icons/sdrpp.png
+Icon=@CMAKE_INSTALL_PREFIX@/share/sdrpp-full/icons/sdrpp.png
 Categories=AudioVideo;Audio;HamRadio;
 Keywords=SDR;radio;receiver;
-StartupWMClass=sdrpp-jp
+StartupWMClass=sdrpp-full
 StartupNotify=true

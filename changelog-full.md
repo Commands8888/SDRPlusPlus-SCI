@@ -2,6 +2,12 @@
 
 The detailed per-release history of the SDR++ iak fork, including alpha and beta pre-releases. For a brief summary of the major releases only, see [changelog.md](changelog.md).
 
+## v1.7.1 - 2026-11-07
+
+- Adopt the SDRPP-FULL name for the application, desktop launcher, Linux packages, and AppImage.
+- Integrate DSD and oldDSD into the Radio module while retaining the upstream authors' credits and licenses.
+- Build and publish Debian/Ubuntu packages with a short public filename. Existing JP settings are copied on first launch.
+
 ## v1.5.0-beta - 2026-08-07
 
 SSTV decoder modul from SwissKnifeEdition implemented and fixed to work in Android. RTTY decoder implemented.

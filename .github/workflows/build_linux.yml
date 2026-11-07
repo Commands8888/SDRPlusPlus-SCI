@@ -78,7 +78,7 @@ jobs:
         # so the file inside the artifact already has its final published name.
         - name: Recover Deb Archive
           working-directory: ${{ runner.workspace }}
-          run: docker cp build:/root/SDRPlusPlus/sdrpp_debian_pkg.deb ./${{ inputs.artifact }}.deb
+          run: docker cp build:/root/SDRPlusPlus/sdrpp_full_pkg.deb ./${{ inputs.artifact }}.deb
 
         - name: Save Deb Archive
           uses: actions/upload-artifact@v6

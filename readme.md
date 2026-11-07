@@ -1,4 +1,6 @@
-# SDR++ jp (fork), is not the original bloat-free SDR software
+# SDRPP-FULL v1.7.1
+
+Linux desktop build with integrated DSD and oldDSD decoding. Download the [Linux packages](https://github.com/Commands8888/SDRPlusPlus-SCI/releases/tag/nightly). For Ubuntu 24.04 (Noble Numbat), use `SDRPP-FULL-v1.7.1.deb` and install with `sudo apt install ./SDRPP-FULL-v1.7.1.deb`. Other Debian and Ubuntu builds have a distribution suffix in the filename. Existing `sdrpp-jp` settings are copied on first launch.
 
 ## Spyserver VFO+FFT module:
 

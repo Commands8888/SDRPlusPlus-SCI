@@ -63,7 +63,7 @@ namespace style {
 
         // Create huge font range
         ImFontGlyphRangesBuilder hugeBuilder;
-        hugeBuilder.AddText("SDR++ jp");
+        hugeBuilder.AddText("SDRPP-FULL");
         hugeBuilder.BuildRanges(&hugeRanges);
         
         // Add bigger fonts for frequency select and title. Rasterize at

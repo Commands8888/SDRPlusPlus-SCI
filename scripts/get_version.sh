@@ -3,8 +3,8 @@
 # and deriving the git-based build-info suffix (commits since the matching
 # vX.Y.Z tag, plus short hash). Used by the CI prepare job
 # (.github/workflows/build_all.yml), the .deb packaging block in
-# CMakeLists.txt, and macos/stage_macos_bundle.sh so they never compute a
-# mismatched version for the same commit.
+# CMakeLists.txt (which uses the clean VERSION), and the other packaging
+# scripts so they never compute a mismatched version for the same commit.
 #
 # Usage: get_version.sh [repo_root]
 # Prints shell-assignment lines on stdout, meant to be eval'd:

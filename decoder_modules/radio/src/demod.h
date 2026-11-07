@@ -270,7 +270,7 @@ namespace demod {
 #include "demodulators/cw.h"
 #include "demodulators/cwr.h"
 #include "demodulators/raw.h"
-#ifdef SDRPP_JP_DSD
+#ifdef SDRPP_FULL_DSD
 #include "../dsd/src/demodulators/dsd.h"
 #include "../dsd/src/demodulators/olddsd.h"
 #endif

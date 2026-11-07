@@ -337,7 +337,7 @@ else ()
     add_executable(sdrpp "src/main.cpp")
 endif ()
 
-set_target_properties(sdrpp PROPERTIES OUTPUT_NAME "sdrpp-jp")
+set_target_properties(sdrpp PROPERTIES OUTPUT_NAME "sdrpp-full")
 
 target_link_libraries(sdrpp PRIVATE sdrpp_core Threads::Threads)
 
@@ -413,12 +413,12 @@ configure_file(${CMAKE_SOURCE_DIR}/sdrpp_module.cmake ${CMAKE_CURRENT_BINARY_DIR
 
 # Install directives
 install(TARGETS sdrpp DESTINATION bin)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/root/res/ DESTINATION share/sdrpp-jp)
-configure_file(${CMAKE_SOURCE_DIR}/sdrpp-jp.desktop ${CMAKE_CURRENT_BINARY_DIR}/sdrpp-jp.desktop @ONLY)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/root/res/ DESTINATION share/sdrpp-full)
+configure_file(${CMAKE_SOURCE_DIR}/sdrpp-full.desktop ${CMAKE_CURRENT_BINARY_DIR}/sdrpp-full.desktop @ONLY)
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/sdrpp-jp.desktop DESTINATION share/applications)
-    install(FILES ${CMAKE_SOURCE_DIR}/license DESTINATION share/doc/sdrpp-jp RENAME copyright)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/sdrpp-full.desktop DESTINATION share/applications)
+    install(FILES ${CMAKE_SOURCE_DIR}/license DESTINATION share/doc/sdrpp-full RENAME copyright)
 
     # Bundled-shared deps (sdrplay's closed-source blob, librfnm, any other dep
     # the policy resolved to distro:bundled distro:shared) live under
@@ -513,33 +513,25 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
         endif ()
     endif ()
 
-    # Split "X.Y.Z[-pre]+<count>-g<hash>" into base version / build info.
+    # Use the public app version in the Debian metadata and downloaded name;
+    # commit identifiers remain in CI logs and release notes.
     string(REPLACE "+" ";" _sdrpp_version_full_parts "${_sdrpp_version_full}")
     list(GET _sdrpp_version_full_parts 0 _sdrpp_app_version)
-    set(_sdrpp_build_info "")
-    list(LENGTH _sdrpp_version_full_parts _sdrpp_version_full_parts_len)
-    if (_sdrpp_version_full_parts_len GREATER 1)
-        list(GET _sdrpp_version_full_parts 1 _sdrpp_build_info)
-    endif ()
 
     # Debian uses '~' as a "pre-release" separator that sorts BELOW the base
     # version, so "1.2.1~beta2" < "1.2.1" in apt's version comparison.
     string(REPLACE "-" "~" _sdrpp_deb_base "${_sdrpp_app_version}")
-    if (_sdrpp_build_info)
-        set(CPACK_PACKAGE_VERSION "${_sdrpp_deb_base}-${_sdrpp_build_info}")
-    else ()
-        set(CPACK_PACKAGE_VERSION "${_sdrpp_deb_base}")
-    endif ()
-    if (OPT_BUILD_DSD)
-        set(CPACK_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION}+dsd2")
-    endif ()
-
-    set(CPACK_PACKAGE_NAME "sdrpp-jp")
-    set(CPACK_PACKAGE_FILE_NAME "sdrpp_debian_pkg")
+    set(CPACK_PACKAGE_VERSION "${_sdrpp_deb_base}")
+    set(CPACK_PACKAGE_NAME "sdrpp-full")
+    set(CPACK_PACKAGE_FILE_NAME "SDRPP-FULL-v${_sdrpp_app_version}")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Bloat-free SDR receiver software")
     set(CPACK_PACKAGING_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
     set(CPACK_GENERATOR "DEB")
-    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Vojtech Bubnik OK1IAK")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "João Emanuel")
+    # The previous JP package ships some shared libraries at the same paths.
+    # apt replaces it during installation while the app imports its settings.
+    set(CPACK_DEBIAN_PACKAGE_CONFLICTS "sdrpp-jp")
+    set(CPACK_DEBIAN_PACKAGE_REPLACES "sdrpp-jp")
 
     # Resolve runtime deps via dpkg-shlibdeps instead of a hand-maintained
     # -dev package list, so it adapts to the build host's distro conventions
@@ -554,7 +546,7 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     string(REGEX REPLACE "^/" "" _sdrpp_deb_install_prefix_rel "${CMAKE_INSTALL_PREFIX}")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS
         "${_sdrpp_deb_install_prefix_rel}/lib"
-        "${_sdrpp_deb_install_prefix_rel}/lib/sdrpp-jp/plugins")
+        "${_sdrpp_deb_install_prefix_rel}/lib/sdrpp-full/plugins")
 
     include(CPack)
 endif ()

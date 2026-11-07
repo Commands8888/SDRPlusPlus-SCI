@@ -1,7 +1,6 @@
 name: Build SCI Linux packages
 
-# Independent Linux release path: unrelated Windows/macOS/Android failures in
-# the complete JP matrix must not block SCI's .deb and AppImage downloads.
+# Lightweight Linux release path for SCI's .deb and AppImage downloads.
 #
 # Calls the same reusable builders as Build Binaries. On every master update,
 # upload the Linux builds to the nightly release; manual runs keep artifacts.

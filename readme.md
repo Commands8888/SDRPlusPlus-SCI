@@ -179,5 +179,5 @@ Thanks and due respect to:
 
 ## Feedback
 
-Found an issue? File an [Inssue](https://github.com/Commands8888/SDRPlusPlus-SCI).
+Found an issue? File an [Issue](https://github.com/Commands8888/SDRPlusPlus-SCI).
 

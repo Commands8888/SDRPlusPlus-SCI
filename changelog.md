@@ -2,6 +2,11 @@
 
 Major releases only. For the detailed per-release history including alpha releases, see [changelog-full.md](changelog-full.md).
 
+## v1.7.3 - SDRPP-FULL
+
+Add João's SDRPP-FULL logo, three themes, three waterfall colormaps, and
+the Geral Brasil bandplan.
+
 ## v1.7.2 - SDRPP-FULL
 
 Fix the oversized title spacing on the loading screen and credits dialog.

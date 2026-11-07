@@ -1,0 +1,21 @@
+{
+  "name": "Sunburst (fldigi)",
+  "author": "fldigi / João",
+  "map": [
+    "#000000",
+    "#200000",
+    "#3f0000",
+    "#5f0000",
+    "#7f0000",
+    "#bf1f00",
+    "#ff3f00",
+    "#ff5f00",
+    "#ff7f00",
+    "#ff9f00",
+    "#ffbf00",
+    "#ffdf00",
+    "#ffff00",
+    "#ffff7f",
+    "#ffffff"
+  ]
+}

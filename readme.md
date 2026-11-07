@@ -1,6 +1,6 @@
-# SDRPP-FULL v1.7.2
+# SDRPP-FULL v1.7.3
 
-Linux desktop build with integrated DSD and oldDSD decoding. Download the [Linux packages](https://github.com/Commands8888/SDRPlusPlus-SCI/releases/tag/nightly). For Ubuntu 24.04 (Noble Numbat), use `SDRPP-FULL-v1.7.2.deb` and install with `sudo apt install ./SDRPP-FULL-v1.7.2.deb`. Other Debian and Ubuntu builds have a distribution suffix in the filename. Existing `sdrpp-jp` settings are copied on first launch.
+Linux desktop build with integrated DSD and oldDSD decoding. Download the [Linux packages](https://github.com/Commands8888/SDRPlusPlus-SCI/releases/tag/nightly). For Ubuntu 24.04 (Noble Numbat), use `SDRPP-FULL-v1.7.3.deb` and install with `sudo apt install ./SDRPP-FULL-v1.7.3.deb`. Other Debian and Ubuntu builds have a distribution suffix in the filename. Existing `sdrpp-jp` settings are copied on first launch. João's SDRPP-FULL logo, Alto Comando themes, waterfall colormaps, and Geral Brasil bandplan are included in the Linux packages.
 
 ## Spyserver VFO+FFT module:
 

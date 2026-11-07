@@ -2,6 +2,11 @@
 
 The detailed per-release history of the SDR++ iak fork, including alpha and beta pre-releases. For a brief summary of the major releases only, see [changelog.md](changelog.md).
 
+## v1.7.3 - 2026-11-07
+
+- Replace the JP logo in the Linux app with João's SDRPP-FULL artwork; keep the supplied icon formats aligned in the source tree.
+- Add Alto Comando Pure, Ultra Neon V3, and Yellow themes; Classic Youssef Pure 16C, Alto Comando SDR Oxide Adverfall 16C, and Sunburst waterfall colormaps; and the Geral Brasil SCI bandplan.
+
 ## v1.7.2 - 2026-11-07
 
 - Render the SDRPP-FULL title without repeated fallback glyphs in the loading screen and credits dialog.

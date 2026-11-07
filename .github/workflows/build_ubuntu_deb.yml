@@ -43,6 +43,7 @@ jobs:
             extra_apt: ''
             curl_source: system
             version_full: ${{ needs.prepare.outputs.version_full }}
+            build_dsd: true
 
     # Also built here because the .deb cannot be installed alongside an
     # existing upstream SDR++ package: both install /usr/bin/sdrpp, so dpkg

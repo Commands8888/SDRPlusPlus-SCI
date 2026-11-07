@@ -45,7 +45,7 @@ cd "${SRC_DIR}"
 # from-scratch app build for repeatability.
 rm -rf build
 
-cmake --preset ci-appimage
+cmake --preset ci-appimage -DOPT_BUILD_DSD=ON
 cd build
 
 make -j"$(nproc)"
@@ -83,10 +83,19 @@ fi
 # ---------------------------------------------------------------------------
 export LD_LIBRARY_PATH="${DEPS_PREFIX}/lib:${APPDIR}/usr/lib:${LD_LIBRARY_PATH:-}"
 
+# DSD uses ITPP from the Focal build container. Include it explicitly so the
+# AppImage remains self-contained even if linuxdeploy does not scan plugins.
+ITPP_LIBRARY="$(ldconfig -p | awk '$1 ~ /^libitpp[.]so[.]/ {print $NF; exit}')"
+if [ -z "${ITPP_LIBRARY}" ] || [ ! -f "${ITPP_LIBRARY}" ]; then
+    echo 'ERROR: libitpp runtime library is missing from the AppImage build image' >&2
+    exit 1
+fi
+
 linuxdeploy \
     --appdir "${APPDIR}" \
     --desktop-file "${DESKTOP_DST}" \
     --icon-file "${APPDIR}/${APP_NAME}.png" \
+    --library "${ITPP_LIBRARY}" \
     --exclude-library "*libGL.so*" \
     --exclude-library "*libGLX.so*" \
     --exclude-library "*libEGL.so*" \
@@ -109,6 +118,11 @@ linuxdeploy \
     --exclude-library "*vmwgfx*" \
     --exclude-library "*libc.so*" \
     --exclude-library "*libglfw*"
+
+if ! find "${APPDIR}/usr/lib" -name 'libitpp.so*' -print -quit | grep -q .; then
+    echo 'ERROR: AppImage is missing the DSD ITPP runtime library' >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Replace linuxdeploy's generated AppRun with one that gives a friendly

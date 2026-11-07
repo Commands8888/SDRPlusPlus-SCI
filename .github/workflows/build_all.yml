@@ -283,6 +283,9 @@ jobs:
             extra_apt: ${{ matrix.extra_apt }}
             curl_source: ${{ matrix.curl_source }}
             version_full: ${{ needs.prepare.outputs.version_full }}
+            # Each Linux .deb includes DSD and oldDSD; libitpp is installed by
+            # the reusable Linux build on the selected distribution.
+            build_dsd: true
 
     build_appimage:
         strategy:

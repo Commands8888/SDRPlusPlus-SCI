@@ -1,0 +1,61 @@
+name: Sync JP upstream
+
+# Open a reviewable merge PR when JP changes. This keeps the fork's credits,
+# DSD integration, and ancestry intact; conflicting edits require a human fix.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 8 * * 1'
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: sync-jp-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Merge JP updates into a review branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch --no-tags https://github.com/jprincl/SDRPlusPlus-jp.git master
+          if git merge-base --is-ancestor FETCH_HEAD HEAD; then
+            echo 'JP master is already present in this fork.'
+            exit 0
+          fi
+
+          branch="automation/sync-jp-$(git rev-parse --short=12 FETCH_HEAD)"
+          if gh pr list --head "${branch}" --state open --json number --jq 'length' | grep -qx 1; then
+            echo "A sync PR for ${branch} is already open."
+            exit 0
+          fi
+
+          git switch -c "${branch}"
+          if ! git merge --no-edit FETCH_HEAD; then
+            echo 'JP changes conflict with this fork; resolve the merge manually.' >&2
+            exit 1
+          fi
+
+          git push origin "HEAD:refs/heads/${branch}"
+          gh pr create --base master --head "${branch}" \
+            --title 'Sync changes from SDRPlusPlus-jp' \
+            --body 'Merge JP master while retaining the SCI credits and DSD/oldDSD integration. Review conflicts and the Noble/AppImage build before merging.'
+
+          # Events created by GITHUB_TOKEN may require approval before PR
+          # checks start. workflow_dispatch always starts a run, including on
+          # a branch created by this workflow.
+          gh workflow run build_ubuntu_deb.yml --ref "${branch}"

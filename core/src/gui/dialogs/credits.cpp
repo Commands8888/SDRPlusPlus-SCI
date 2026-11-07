@@ -35,7 +35,7 @@ namespace credits {
         ImGui::BeginPopupModal("Credits", NULL, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove);
 
         ImGui::PushFont(style::hugeFont);
-        ImGui::TextUnformatted("SDR++ jp      ");
+        ImGui::TextUnformatted("SDRPP-FULL      ");
         ImGui::PopFont();
         ImGui::SameLine();
         ImGui::Image(icons::LOGO, imageSize);
@@ -75,7 +75,7 @@ namespace credits {
         ImGui::Spacing();
         ImGui::Spacing();
         ImGui::Spacing();
-        ImGui::TextUnformatted("SDR++ jp v" VERSION_STR " (Built at " __TIME__ ", " __DATE__ ")");
+        ImGui::TextUnformatted("SDRPP v" VERSION_STR);
 
         ImGuiIO& io = ImGui::GetIO();
         float dragThreshold = std::max(io.MouseDragThreshold, style::dp(6.0f));

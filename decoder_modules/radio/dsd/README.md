@@ -1,8 +1,8 @@
-# DSD and oldDSD for SDR++ JP
+# DSD and oldDSD for SDRPP-FULL
 
 The Radio menu exposes two digital voice modes: **DSD** and **oldDSD**. They
-are part of JP's existing `radio` plugin, so there is no separate VHF plugin
-to enable. All other JP modules remain in their original locations.
+are integrated into the Radio plugin inherited from JP, so there is no
+separate VHF plugin to enable. All other JP modules remain in place.
 
 The demodulator, user interface, slicer, and protocol processing sources in
 `src/` were ported from `decoder_modules/ch_extravhf_decoder` in
@@ -21,11 +21,11 @@ time and its runtime library when installed).
 
 ## Linux packages and AppImage
 
-`Build Binaries` runs on pull requests, version tags, and manual dispatch. Its Linux
+`Build SDRPP-FULL Linux` runs on pull requests, version tags, and manual dispatch. Its Linux
 matrix builds DSD-enabled `.deb` packages for Debian bullseye, bookworm,
 trixie, and sid and Ubuntu focal, jammy, noble, and resolute on amd64 and
 arm64. It also builds DSD-enabled x86_64 and aarch64 AppImages with ITPP
-bundled. The separate `Build SCI Linux packages` workflow builds the five
+bundled. The separate `Build SDRPP-FULL Linux packages` workflow builds the five
 amd64 `.deb` packages for Debian bookworm/trixie and Ubuntu jammy/noble/resolute,
 plus the x86_64 AppImage. It runs on master pushes, publishes successful builds
 to the nightly release, and can also be started manually. On a local Noble
@@ -37,7 +37,7 @@ cmake --build build --parallel 4
 (cd build && cpack)
 ```
 
-The resulting `build/sdrpp_debian_pkg.deb` contains the JP application and
+The resulting `build/SDRPP-FULL-v1.7.1.deb` contains SDRPP-FULL and
 the Radio plugin with both DSD modes. The option `OPT_BUILD_DSD=OFF` leaves
 the original radio plugin without these modes. The option defaults to OFF;
 the Linux packaging workflows explicitly turn it on and install `libitpp-dev`.
@@ -54,12 +54,12 @@ If JP edits the same lines as SCI, the sync run reports a merge conflict for
 manual resolution. GitHub may require enabling Actions to create pull requests
 under repository Settings > Actions > General > Workflow permissions.
 
-On each push to master, `Build SCI Linux packages` refreshes the nightly
+On each push to master, `Build SDRPP-FULL Linux packages` refreshes the nightly
 release after its five `.deb` builds and AppImage succeed.
 
 For a tagged release, update `VERSION_STR` in `core/src/version.h`, commit and
 push, then create and push a matching `v<version>` tag. The workflow checks
-that the tag matches the header. For example, `1.7.0-beta` requires
-`v1.7.0-beta`; bump the version for later releases so package upgrades have a
+that the tag matches the header. For example, `1.7.1` requires
+`v1.7.1`; bump the version for later releases so package upgrades have a
 newer version. GitHub Releases host the downloads; automatic upgrades through
 `apt` require a separate signed APT repository.

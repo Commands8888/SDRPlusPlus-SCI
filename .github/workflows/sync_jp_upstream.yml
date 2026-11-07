@@ -53,7 +53,7 @@ jobs:
           git push origin "HEAD:refs/heads/${branch}"
           gh pr create --base master --head "${branch}" \
             --title 'Sync changes from SDRPlusPlus-jp' \
-            --body 'Merge JP master while retaining the SCI credits and DSD/oldDSD integration. Review conflicts and the Noble/AppImage build before merging.'
+            --body 'Merge JP master while retaining the SDRPP-FULL credits and DSD/oldDSD integration. Review conflicts and Linux builds before merging.'
 
           # Events created by GITHUB_TOKEN may require approval before PR
           # checks start. workflow_dispatch always starts a run, including on

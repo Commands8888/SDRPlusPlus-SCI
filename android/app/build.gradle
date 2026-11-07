@@ -41,7 +41,7 @@ android {
         targetSdk 36
         versionCode appVersion.code
         versionName appVersion.name
-        resValue "string", "app_name", "SDR++ jp"
+        resValue "string", "app_name", "SDRPP-FULL"
 
         externalNativeBuild {
             cmake {
@@ -93,7 +93,7 @@ android {
         debug {
             applicationIdSuffix ".debug"
             versionNameSuffix "-debug"
-            resValue "string", "app_name", "SDR++ jp debug"
+            resValue "string", "app_name", "SDRPP-FULL debug"
             signingConfig = signingConfigs.debug
         }
     }
@@ -127,7 +127,7 @@ android {
 androidComponents {
     onVariants(selector().all()) { variant ->
         variant.outputs.each { output ->
-            output.outputFileName.set("sdrpp-jp-${variant.flavorName}-${variant.buildType}.apk")
+            output.outputFileName.set("SDRPP-FULL-${variant.flavorName}-${variant.buildType}.apk")
         }
     }
 }

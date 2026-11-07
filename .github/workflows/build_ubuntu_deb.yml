@@ -1,6 +1,6 @@
-name: Build SCI Linux packages
+name: Build SDRPP-FULL Linux packages
 
-# Lightweight Linux release path for SCI's .deb and AppImage downloads.
+# Lightweight Linux release path for SDRPP-FULL .deb and AppImage downloads.
 #
 # Calls the same reusable builders as Build Binaries. On every master update,
 # upload the Linux builds to the nightly release; manual runs keep artifacts.
@@ -21,6 +21,7 @@ jobs:
     prepare:
         runs-on: ubuntu-latest
         outputs:
+            version: ${{ steps.read.outputs.version }}
             version_full: ${{ steps.read.outputs.version_full }}
         steps:
         - uses: actions/checkout@v5
@@ -32,6 +33,7 @@ jobs:
           id: read
           run: |
             eval "$(scripts/get_version.sh "$GITHUB_WORKSPACE")"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "version_full=$VERSION_FULL" >> $GITHUB_OUTPUT
 
     build_deb:
@@ -42,48 +44,48 @@ jobs:
                 include:
                     - base_image: debian:bookworm
                       suffix: debian-bookworm-amd64
+                      filename_suffix: -debian-bookworm-amd64
                       volk_package: libvolk2-dev
                       curl_source: bundled
                     - base_image: debian:trixie
                       suffix: debian-trixie-amd64
+                      filename_suffix: -debian-trixie-amd64
                       volk_package: libvolk-dev
                       curl_source: system
                     - base_image: ubuntu:jammy
                       suffix: ubuntu-jammy-amd64
+                      filename_suffix: -ubuntu-jammy-amd64
                       volk_package: libvolk2-dev
                       curl_source: bundled
                     - base_image: ubuntu:noble
                       suffix: ubuntu-noble-amd64
+                      filename_suffix: ''
                       volk_package: libvolk-dev
                       curl_source: system
                     - base_image: ubuntu:resolute
                       suffix: ubuntu-resolute-amd64
+                      filename_suffix: -ubuntu-resolute-amd64
                       volk_package: libvolk-dev
                       curl_source: system
         uses: ./.github/workflows/build_linux.yml
         with:
             base_image: ${{ matrix.base_image }}
             runner: ubuntu-latest
-            artifact: sdrpp-jp-${{ needs.prepare.outputs.version_full }}-${{ matrix.suffix }}
+            artifact: SDRPP-FULL-v${{ needs.prepare.outputs.version }}${{ matrix.filename_suffix }}
             volk_package: ${{ matrix.volk_package }}
             extra_apt: ''
             curl_source: ${{ matrix.curl_source }}
             version_full: ${{ needs.prepare.outputs.version_full }}
             build_dsd: true
 
-    # Also built here because the .deb cannot be installed alongside an
-    # existing upstream SDR++ package: both install /usr/bin/sdrpp, so dpkg
-    # refuses. Everything else is already namespaced (package sdrpp-jp,
-    # /usr/share/sdrpp-jp, /usr/lib/sdrpp-jp/plugins, sdrpp-jp.desktop),
-    # and AppImage builds even get their own config dir on purpose - so the
-    # AppImage is the side-by-side option.
+    # Portable option with an isolated config directory.
     build_appimage:
         needs: [prepare]
         uses: ./.github/workflows/build_appimage.yml
         with:
             runner: ubuntu-latest
             arch: x86_64
-            artifact: sdrpp-jp-${{ needs.prepare.outputs.version_full }}-linux-appimage-x86_64
+            artifact: SDRPP-FULL-v${{ needs.prepare.outputs.version }}-linux-x86_64
             version_full: ${{ needs.prepare.outputs.version_full }}
 
     publish_nightly:
@@ -97,19 +99,32 @@ jobs:
             - uses: actions/download-artifact@v7
               with:
                   path: packages
-                  pattern: sdrpp-jp-${{ needs.prepare.outputs.version_full }}-*
+                  pattern: SDRPP-FULL-v${{ needs.prepare.outputs.version }}*
                   merge-multiple: true
 
             - name: Publish Linux nightly downloads
               env:
                   GH_TOKEN: ${{ github.token }}
-                  VER: ${{ needs.prepare.outputs.version_full }}
+                  VER: ${{ needs.prepare.outputs.version }}
               run: |
                   set -euo pipefail
-                  notes="SCI Linux nightly ${VER} (DSD + oldDSD); commit $GITHUB_SHA"
+                  notes="SDRPP-FULL v${VER} Linux (DSD + oldDSD); commit $GITHUB_SHA"
                   if ! gh release view nightly --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
                       gh release create nightly --repo "$GITHUB_REPOSITORY" \
-                          --title 'SCI Nightly' --prerelease --notes "$notes"
+                          --title 'SDRPP-FULL Nightly' --prerelease --notes "$notes"
                   fi
-                  gh release edit nightly --repo "$GITHUB_REPOSITORY" --notes "$notes"
+                  gh release edit nightly --repo "$GITHUB_REPOSITORY" \
+                      --title 'SDRPP-FULL Nightly' --notes "$notes"
                   gh release upload nightly packages/* --repo "$GITHUB_REPOSITORY" --clobber
+                  # Remove only packages generated by earlier SCI/FULL builds.
+                  gh release view nightly --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' |
+                  while IFS= read -r asset; do
+                      case "$asset" in
+                          sdrpp-jp-*|SDRPP-FULL-v*)
+                              if [ ! -f "packages/$asset" ]; then
+                                  gh release delete-asset nightly "$asset" \
+                                      --repo "$GITHUB_REPOSITORY" --yes
+                              fi
+                              ;;
+                      esac
+                  done

@@ -28,7 +28,7 @@
 
 // Must match the .desktop file basename and its StartupWMClass key so that
 // desktop shells (GNOME, KDE) can map the window to its launcher icon.
-#define SDRPP_APP_ID "sdrpp-jp"
+#define SDRPP_APP_ID "sdrpp-full"
 
 namespace backend {
     // Set Wayland app_id and X11 WM_CLASS for the next created window.
@@ -133,7 +133,7 @@ namespace backend {
 
         // Create window with graphics context
         monitor = glfwGetPrimaryMonitor();
-        window = glfwCreateWindow(winWidth, winHeight, "SDR++ jp v" VERSION_STR " (Built at " __TIME__ ", " __DATE__ ")", NULL, NULL);
+        window = glfwCreateWindow(winWidth, winHeight, "SDRPP v" VERSION_STR, NULL, NULL);
         if (window == NULL)
             return 1;
         glfwMakeContextCurrent(window);
@@ -149,7 +149,7 @@ namespace backend {
 
             // Create window with graphics context
             monitor = glfwGetPrimaryMonitor();
-            window = glfwCreateWindow(winWidth, winHeight, "SDR++ jp v" VERSION_STR " (Built at " __TIME__ ", " __DATE__ ")", NULL, NULL);
+            window = glfwCreateWindow(winWidth, winHeight, "SDRPP v" VERSION_STR, NULL, NULL);
             if (window == NULL) {
                 flog::info("OpenGL {0}.{1} {2}was not supported", OPENGL_VERSIONS_MAJOR[i], OPENGL_VERSIONS_MINOR[i], OPENGL_VERSIONS_IS_ES[i] ? "ES " : "");
                 continue;

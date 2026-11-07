@@ -89,4 +89,4 @@ make VERBOSE=1 -j"$(nproc)"
 cpack
 
 cd ..
-mv build/sdrpp_debian_pkg.deb .
+mv build/SDRPP-FULL-v*.deb sdrpp_full_pkg.deb

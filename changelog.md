@@ -2,6 +2,13 @@
 
 Major releases only. For the detailed per-release history including alpha releases, see [changelog-full.md](changelog-full.md).
 
+## v1.7.1 - SDRPP-FULL
+
+The Linux application, launcher, and packages use the SDRPP-FULL name. DSD and
+oldDSD are integrated into the Radio module. Releases provide a short Noble
+package name (`SDRPP-FULL-v1.7.1.deb`) alongside labeled Debian/Ubuntu builds.
+The upstream JP and Brown contributions remain credited in the source.
+
 
 ## v1.2.2 - 2026-07-14 — first public release of SDR++ iak
 

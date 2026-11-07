@@ -187,7 +187,7 @@ public:
         RADIO_DEMOD_RAW,
         RADIO_DEMOD_CWR,
         _RADIO_DEMOD_COUNT,
-#ifdef SDRPP_JP_DSD
+#ifdef SDRPP_FULL_DSD
         RADIO_DEMOD_DSD = 0x1301,
         RADIO_DEMOD_OLDDSD = 0x1302,
 #endif
@@ -205,14 +205,14 @@ private:
         // Display order differs from DemodID order: related modes grouped so
         // the default 5+4 wrap yields NFM WFM AM DSB RAW / LSB USB CW CW-R.
         static const std::vector<std::string> modeLabels = { "NFM", "WFM", "AM", "DSB", "RAW", "LSB", "USB", "CW", "CW-R"
-#ifdef SDRPP_JP_DSD
+#ifdef SDRPP_FULL_DSD
             , "DSD", "oldDSD"
 #endif
         };
         static const std::vector<DemodID> modeIDs = {
             RADIO_DEMOD_NFM, RADIO_DEMOD_WFM, RADIO_DEMOD_AM, RADIO_DEMOD_DSB, RADIO_DEMOD_RAW,
             RADIO_DEMOD_LSB, RADIO_DEMOD_USB, RADIO_DEMOD_CW, RADIO_DEMOD_CWR
-#ifdef SDRPP_JP_DSD
+#ifdef SDRPP_FULL_DSD
             , RADIO_DEMOD_DSD, RADIO_DEMOD_OLDDSD
 #endif
         };
@@ -382,7 +382,7 @@ private:
             case DemodID::RADIO_DEMOD_LSB:  demod = new demod::LSB(); break;
             case DemodID::RADIO_DEMOD_RAW:  demod = new demod::RAW(); break;
             case DemodID::RADIO_DEMOD_CWR:  demod = new demod::CWR(); break;
-#ifdef SDRPP_JP_DSD
+#ifdef SDRPP_FULL_DSD
             case DemodID::RADIO_DEMOD_DSD:    demod = new demod::DSD(); break;
             case DemodID::RADIO_DEMOD_OLDDSD: demod = new demod::OldDSD(); break;
 #endif

@@ -32,7 +32,7 @@ namespace backend {
     EGLDisplay _EglDisplay = EGL_NO_DISPLAY;
     EGLSurface _EglSurface = EGL_NO_SURFACE;
     EGLContext _EglContext = EGL_NO_CONTEXT;
-    char _LogTag[] = "SDR++ jp";
+    char _LogTag[] = "SDRPP-FULL";
     bool initialized = false;
     bool pauseRendering = false;
     std::atomic<bool> sleepScreenDimmed{false};   // True during DIM and DARK phases (set via JNI)

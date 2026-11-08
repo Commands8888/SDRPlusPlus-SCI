@@ -37,7 +37,9 @@ env:
 
 jobs:
     build:
-        runs-on: ${{ inputs.runner }}
+        # Noble's host-side race test needs the same runtime SONAMEs as its
+        # container (Volk 3.1, FLAC 12); ubuntu-latest may use newer ABIs.
+        runs-on: ${{ inputs.base_image == 'ubuntu:noble' && inputs.runner == 'ubuntu-latest' && 'ubuntu-24.04' || inputs.runner }}
 
         steps:
         - uses: actions/checkout@v5
@@ -61,9 +63,19 @@ jobs:
               --env CURL_SOURCE="${{ inputs.curl_source }}" \
               --env VERSION_FULL="${{ inputs.version_full }}" \
               --env BUILD_DSD="${{ inputs.build_dsd }}" \
+              --env RUN_DSD_TESTS="${{ inputs.build_dsd && inputs.base_image == 'ubuntu:noble' }}" \
               --env GITHUB_ACTIONS \
               --env GITHUB_REF_TYPE \
               sdrpp_build /root/do_build.sh
+
+        - name: Test concurrent DSD status on the runner
+          if: inputs.build_dsd && inputs.base_image == 'ubuntu:noble'
+          # Clang TSan runs directly on the ephemeral runner, where its runtime
+          # can arrange shadow memory without Docker's personality restriction.
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y clang libclang-rt-dev libitpp-dev libvolk-dev libglfw3-dev libfftw3-dev libzstd-dev libflac-dev libopus-dev
+            CXX=clang++ bash scripts/test_dsd_modes.sh build status
 
         # The container writes into the bind-mounted source tree as root,
         # so the resulting files (including newly downloaded tarballs in

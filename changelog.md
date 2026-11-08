@@ -2,6 +2,11 @@
 
 Major releases only. For the detailed per-release history including alpha releases, see [changelog-full.md](changelog-full.md).
 
+## v1.7.7 - SDRPP-FULL (unreleased)
+
+Fix oldDSD input-buffer memory corruption and concurrent decoder/UI status
+access. Add sanitizer regressions for buffer boundaries and rapid mode changes.
+
 ## v1.7.6 - SDRPP-FULL
 
 Embed Osmocom rtl-sdr 2.0.3 and Vojtech Bubnik's USB teardown correction in

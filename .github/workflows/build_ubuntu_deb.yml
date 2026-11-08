@@ -48,32 +48,32 @@ jobs:
                 include:
                     - base_image: debian:bookworm
                       suffix: debian-bookworm-amd64
-                      filename_suffix: -debian-bookworm-amd64
+                      filename_suffix: -Debian-Bookworm-amd64
                       volk_package: libvolk2-dev
                       curl_source: bundled
                     - base_image: debian:trixie
                       suffix: debian-trixie-amd64
-                      filename_suffix: -debian-trixie-amd64
+                      filename_suffix: -Debian-Trixie-amd64
                       volk_package: libvolk-dev
                       curl_source: system
                     - base_image: ubuntu:jammy
                       suffix: ubuntu-jammy-amd64
-                      filename_suffix: -ubuntu-jammy-amd64
+                      filename_suffix: -ubuntu-Jammy-Jellyfish-amd64
                       volk_package: libvolk2-dev
                       curl_source: bundled
                     - base_image: ubuntu:noble
                       suffix: ubuntu-noble-amd64
-                      filename_suffix: ''
+                      filename_suffix: -Ubuntu-Noble-Numbat-amd64
                       volk_package: libvolk-dev
                       curl_source: system
                     - base_image: ubuntu:resolute
                       suffix: ubuntu-resolute-amd64
-                      filename_suffix: -ubuntu-resolute-amd64
+                      filename_suffix: -Ubuntu-Resolute-Raccoon-amd64
                       volk_package: libvolk-dev
                       curl_source: system
                     - base_image: ubuntu:stonking
                       suffix: ubuntu-stonking-amd64
-                      filename_suffix: -ubuntu-stonking-amd64
+                      filename_suffix: -Ubuntu-Stonking-Stingray-amd64
                       volk_package: libvolk-dev
                       curl_source: system
         uses: ./.github/workflows/build_linux.yml
@@ -94,7 +94,7 @@ jobs:
         with:
             runner: ubuntu-latest
             arch: x86_64
-            artifact: SDRPP-FULL-v${{ needs.prepare.outputs.version }}-linux-x86_64
+            artifact: SDRPP-FULL-v${{ needs.prepare.outputs.version }}-Linux-x86_64
             version_full: ${{ needs.prepare.outputs.version_full }}
 
     publish_release:

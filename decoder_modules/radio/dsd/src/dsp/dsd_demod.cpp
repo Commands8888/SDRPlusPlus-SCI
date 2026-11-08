@@ -14,6 +14,7 @@
 namespace dsp {
 
         int NewDSD::process(int count, const uint8_t* in, short* out) {
+            std::lock_guard<std::mutex> lock(statusMtx);
             int pos = 0;
             int outcnt = 0;
             while((count-pos) > 0) {
@@ -311,8 +312,9 @@ namespace dsp {
         };
 
         short DSD::getSample() {
+            if (finflag < 0) { return 0; }
             if(inputBufDataRemains > 0) {
-                short ret = inputBuffer[++inputBufReadPtr];
+                short ret = inputBuffer[inputBufReadPtr++];
                 if(inputBufReadPtr >= DSD_INPUT_BUFF_SIZE) inputBufReadPtr = 0;
                 inputBufDataRemains--;
                 inSymsCtr++;
@@ -323,9 +325,9 @@ namespace dsp {
                     finflag = -1;
                     return 0;
                 }
-                if(count < DSD_INPUT_BUFF_SIZE) {
+                if(count <= DSD_INPUT_BUFF_SIZE) {
                     for(int i = 0; i < count; i++) {
-                        inputBuffer[++inputBufWritePtr] = base_type::_in->readBuf[i];
+                        inputBuffer[inputBufWritePtr++] = base_type::_in->readBuf[i];
                         if(inputBufWritePtr >= DSD_INPUT_BUFF_SIZE) inputBufWritePtr = 0;
                         inputBufDataRemains++;
                     }
@@ -333,6 +335,8 @@ namespace dsp {
                     return getSample();
                 } else {
                     flog::error("ERROR! TOO MUCH DATA FOR DSD BUFFER!");
+                    base_type::_in->flush();
+                    finflag = -1;
                     return 0;
                 }
             }

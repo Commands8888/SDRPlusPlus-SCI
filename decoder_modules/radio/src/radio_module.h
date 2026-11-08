@@ -144,6 +144,9 @@ public:
         if (enabled) {
             disable();
         }
+        delete selectedDemod;
+        selectedDemod = nullptr;
+        dsp::taps::free(hpTaps);
         sigpath::sinkManager.unregisterStream(name);
     }
 
@@ -556,7 +559,6 @@ private:
             afChain.stop();
             double afsr = selectedDemod->getAFSampleRate();
             ctcss.setSamplerate(afsr);
-            resamp.setInSamplerate(afsr);
             afChain.enableBlock(&resamp, [=](dsp::stream<dsp::stereo_t>* out){ stream.setInput(out); });
             setAudioSampleRate(audioSampleRate);
 
@@ -605,11 +607,18 @@ private:
         afChain.stop();
 
         // Configure resampler
-        resamp.setOutSamplerate(audioSampleRate);
+        // Apply both rates once; selecting a mode used to design this filter
+        // twice, first for the input rate and again for the unchanged output.
+        resamp.setRates(selectedDemod->getAFSampleRate(), audioSampleRate);
 
         // Configure the HPF sample rate
-        hpTaps = dsp::taps::highPass(300.0, 100.0, audioSampleRate);
-        hpf.setTaps(hpTaps);
+        if (hpSampleRate != audioSampleRate) {
+            auto previous = hpTaps;
+            hpTaps = dsp::taps::highPass(300.0, 100.0, audioSampleRate);
+            hpf.setTaps(hpTaps);
+            dsp::taps::free(previous);
+            hpSampleRate = audioSampleRate;
+        }
 
         // Configure deemphasis sample rate
         deemp.setSamplerate(audioSampleRate);
@@ -894,6 +903,7 @@ private:
     dsp::noise_reduction::CTCSSSquelch ctcss;
     dsp::multirate::RationalResampler<dsp::stereo_t> resamp;
     dsp::tap<float> hpTaps;
+    double hpSampleRate = 48000.0;
     dsp::filter::FIR<dsp::stereo_t, float> hpf;
     dsp::filter::Deemphasis<dsp::stereo_t> deemp;
 

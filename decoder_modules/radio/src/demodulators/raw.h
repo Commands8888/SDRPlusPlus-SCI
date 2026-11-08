@@ -64,7 +64,9 @@ namespace demod {
         dsp::stream<dsp::stereo_t>* getOutput() { return &c2s.out; }
 
     private:
-        double audioSampleRate;
+        // RadioModule queries default bandwidth before init() sets the
+        // actual sink rate. Keep those pre-init queries deterministic.
+        double audioSampleRate = 48000.0;
         dsp::convert::ComplexToStereo c2s;
     };
 }

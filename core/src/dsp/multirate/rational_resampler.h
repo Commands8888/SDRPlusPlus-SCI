@@ -119,7 +119,9 @@ namespace dsp::multirate {
 
         void reconfigure() {
             // Calculate highest power-of-two decimation for the power decimator 
-            int predecPower = std::min<int>(floor(log2(_inSamplerate / _outSamplerate)), PowerDecimator<T>::getMaxRatio());
+            // Upsampling (CW/DSD audio -> sink rate) needs no predecimation.
+            // A negative exponent here made the following shift undefined.
+            int predecPower = std::max<int>(0, std::min<int>(floor(log2(_inSamplerate / _outSamplerate)), PowerDecimator<T>::getMaxRatio()));
             int predecRatio = std::min<int>(1 << predecPower, PowerDecimator<T>::getMaxRatio());
             double intSamplerate = _inSamplerate;
 

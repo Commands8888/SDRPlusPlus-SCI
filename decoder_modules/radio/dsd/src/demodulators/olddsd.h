@@ -73,42 +73,43 @@ namespace demod {
         }
 
         void showMenu() {
+            const auto status = dsdDec.getStatus();
             ImVec4 color;
-            if(dsdDec.status_sync) {
+            if(status.status_sync) {
                 color = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
             } else {
                 color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
             }
-            ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "Inlvl: %d %%", dsdDec.status_lvl);
-            ImGui::TextColored(color, "Mode: %s", dsdDec.status_last_proto.c_str());
+            ImGui::TextColored(ImVec4(1.0f, 1.0f, 1.0f, 1.0f), "Inlvl: %d %%", status.status_lvl);
+            ImGui::TextColored(color, "Mode: %s", status.status_last_proto.c_str());
             ImVec4 p25_color;
             ImVec4 dmr_color;
             ImVec4 nxdn_color;
             ImVec4 bar_color;
-            if(dsdDec.status_sync && (dsdDec.status_last_proto == "+P25p1" || dsdDec.status_last_proto == "-P25p1")) {
+            if(status.status_sync && (status.status_last_proto == "+P25p1" || status.status_last_proto == "-P25p1")) {
                 p25_color = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
             } else {
                 p25_color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
             }
-            if(dsdDec.status_sync && (dsdDec.status_last_proto == "+DMR" || dsdDec.status_last_proto == "-DMR")) {
+            if(status.status_sync && (status.status_last_proto == "+DMR" || status.status_last_proto == "-DMR")) {
                 dmr_color = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
             } else {
                 dmr_color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
             }
-            if(dsdDec.status_sync && (dsdDec.status_last_proto == "+NXDN48" || dsdDec.status_last_proto == "-NXDN48" || dsdDec.status_last_proto == "+NXDN96" || dsdDec.status_last_proto == "-NXDN96")) {
+            if(status.status_sync && (status.status_last_proto == "+NXDN48" || status.status_last_proto == "-NXDN48" || status.status_last_proto == "+NXDN96" || status.status_last_proto == "-NXDN96")) {
                 nxdn_color = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
             } else {
                 nxdn_color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
             }
-            if(dsdDec.status_sync && dsdDec.status_mbedecoding) {
+            if(status.status_sync && status.status_mbedecoding) {
                 bar_color = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
             } else {
                 bar_color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
             }
-            ImGui::TextColored(p25_color, "Last P25 nac: %d src: %d tg: %d DUID: %s", dsdDec.status_last_nac, dsdDec.status_last_src, dsdDec.status_last_tg, dsdDec.status_last_p25_duid.c_str());
-            ImGui::TextColored(dmr_color, "Last DMR S0: %s S1: %s", dsdDec.status_last_dmr_slot0_burst.c_str(), dsdDec.status_last_dmr_slot1_burst.c_str());
-            ImGui::TextColored(nxdn_color, "Last NXDN type: %s", dsdDec.status_last_nxdn_type.c_str());
-            ImGui::TextColored(bar_color, "Voice err: %s", dsdDec.status_errorbar.c_str());
+            ImGui::TextColored(p25_color, "Last P25 nac: %d src: %d tg: %d DUID: %s", status.status_last_nac, status.status_last_src, status.status_last_tg, status.status_last_p25_duid.c_str());
+            ImGui::TextColored(dmr_color, "Last DMR S0: %s S1: %s", status.status_last_dmr_slot0_burst.c_str(), status.status_last_dmr_slot1_burst.c_str());
+            ImGui::TextColored(nxdn_color, "Last NXDN type: %s", status.status_last_nxdn_type.c_str());
+            ImGui::TextColored(bar_color, "Voice err: %s", status.status_errorbar.c_str());
         }
 
         void setBandwidth(double bandwidth) {

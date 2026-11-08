@@ -10,6 +10,7 @@
 
 #define _USE_MATH_DEFINES
 #include <math.h>
+#include <mutex>
 
 #ifdef WIN32
 #undef max
@@ -117,21 +118,25 @@ namespace dsp {
             uint16_t p25_status_tgid = 0;
             uint8_t p25_status_lcformat = 0;
             uint64_t p25_status_lcinfo = 0;
-            uint8_t p25_status_lastduid[2];
+            uint8_t p25_status_lastduid[2] = {};
             std::string p25_status_lasttype = "UNK";
             bool p25_status_irr_err = false;
         };
 
         Frame_status getFrameSyncStatus() {
+            std::lock_guard<std::mutex> lock(statusMtx);
             return frame_status;
         }
         MBE_status getMBEStatus() {
+            std::lock_guard<std::mutex> lock(statusMtx);
             return mbe_status;
         }
         DMR_status getDMRStatus() {
+            std::lock_guard<std::mutex> lock(statusMtx);
             return dmr_status;
         }
         P25_status getP25Status() {
+            std::lock_guard<std::mutex> lock(statusMtx);
             return p25_status;
         }
 
@@ -410,6 +415,9 @@ namespace dsp {
         int p25_tsdu_ctr = 0;
         int processP25TSDU(int count, const uint8_t* in);
         int processP25PDU(int count, const uint8_t* in);
+        // process() never waits on DSP streams while holding this mutex.
+        // Status strings must not be copied by the UI during a decoder write.
+        std::mutex statusMtx;
     };
 
 
@@ -487,9 +495,32 @@ namespace dsp {
                 base_type::out.swap(remainingOut);
             }
             inSymsCtr -= requiredOut * 48000 / 8000;
+            publishStatus();
             return finflag;
         }
 
+        struct Status {
+            bool status_sync = false;
+            std::string status_last_proto;
+            int status_last_nac = 0;
+            int status_last_src = 0;
+            int status_last_tg = 0;
+            std::string status_last_p25_duid;
+            std::string status_last_dmr_slot0_burst;
+            std::string status_last_dmr_slot1_burst;
+            std::string status_last_nxdn_type;
+            std::string status_errorbar;
+            bool status_mbedecoding = false;
+            int status_lvl = 0;
+        };
+
+        Status getStatus() {
+            std::lock_guard<std::mutex> lock(statusMtx);
+            return publishedStatus;
+        }
+
+        // Decoder-thread working state. The UI reads getStatus(), since run()
+        // can wait for input/output and must not hold a UI mutex while doing so.
         bool status_sync = false;
         std::string status_last_proto = "";
         int status_last_nac = 0;
@@ -1145,6 +1176,25 @@ namespace dsp {
             16, 5, 15, 4, 14, 3,
             13, 2, 12, 1, 11, 0
         };
+
+        std::mutex statusMtx;
+        Status publishedStatus;
+
+        void publishStatus() {
+            std::lock_guard<std::mutex> lock(statusMtx);
+            publishedStatus.status_sync = status_sync;
+            publishedStatus.status_last_proto = status_last_proto;
+            publishedStatus.status_last_nac = status_last_nac;
+            publishedStatus.status_last_src = status_last_src;
+            publishedStatus.status_last_tg = status_last_tg;
+            publishedStatus.status_last_p25_duid = status_last_p25_duid;
+            publishedStatus.status_last_dmr_slot0_burst = status_last_dmr_slot0_burst;
+            publishedStatus.status_last_dmr_slot1_burst = status_last_dmr_slot1_burst;
+            publishedStatus.status_last_nxdn_type = status_last_nxdn_type;
+            publishedStatus.status_errorbar = status_errorbar;
+            publishedStatus.status_mbedecoding = status_mbedecoding;
+            publishedStatus.status_lvl = status_lvl;
+        }
     };
 
 };

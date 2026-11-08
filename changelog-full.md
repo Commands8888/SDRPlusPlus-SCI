@@ -2,6 +2,13 @@
 
 The detailed per-release history of the SDR++ iak fork, including alpha and beta pre-releases. For a brief summary of the major releases only, see [changelog.md](changelog.md).
 
+## v1.7.7 - Unreleased
+
+- Fix oldDSD's sample-buffer wraparound: a pre-increment accessed index 240 in a 240-element array and could corrupt adjacent decoder state.
+- Accept a full input buffer and terminate cleanly on oversized packets instead of rereading an unflushed packet.
+- Synchronize DSD status copies with decoder writes and publish an independent oldDSD UI snapshot without holding its mutex while waiting for DSP input/output.
+- Add buffer-boundary, concurrent-status and 270 live mode-switch regressions for CW-R, DSD, oldDSD, NFM, LSB and USB.
+
 ## v1.7.6 - 2026-11-08
 
 - Pin the RTL source to Osmocom rtl-sdr 2.0.3, including official RTL-SDR Blog V4L support.

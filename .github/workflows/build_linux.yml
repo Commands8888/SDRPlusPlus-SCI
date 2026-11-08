@@ -85,6 +85,14 @@ jobs:
             dpkg-deb --contents "${{ runner.workspace }}/${{ inputs.artifact }}.deb" > "${RUNNER_TEMP}/sdrpp-package-files.txt"
             grep -qE '/share/sdrpp-full/bandplans/[^/]+\.json$' "${RUNNER_TEMP}/sdrpp-package-files.txt"
 
+        - name: Test DSD memory, status and mode switching
+          # Run on the Noble matrix entries; the other OSes still build and
+          # smoke-test their packages through docker_builds/do_build.sh.
+          if: inputs.build_dsd && inputs.base_image == 'ubuntu:noble'
+          run: |
+            docker exec --env ASAN_OPTIONS=detect_leaks=0:quarantine_size_mb=32 \
+              build bash /root/SDRPlusPlus/scripts/test_dsd_modes.sh /root/SDRPlusPlus/build
+
         - name: Save Deb Archive
           uses: actions/upload-artifact@v6
           with:

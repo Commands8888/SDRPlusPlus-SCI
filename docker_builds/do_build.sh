@@ -60,7 +60,7 @@ apt_install_with_refresh() {
 
 # Install dependencies and tools
 apt_install_with_refresh build-essential cmake git pkg-config libfftw3-dev libglfw3-dev ${VOLK_PACKAGE} liborc-0.4-dev libzstd-dev ${CURL_APT} libairspy-dev libairspyhf-dev \
-    libiio-dev libad9361-dev librtaudio-dev libhackrf-dev librtlsdr-dev libbladerf-dev liblimesuite-dev p7zip-full wget portaudio19-dev \
+    libiio-dev libad9361-dev librtaudio-dev libhackrf-dev libusb-1.0-0-dev libbladerf-dev liblimesuite-dev p7zip-full wget portaudio19-dev \
     libcodec2-dev libflac-dev libopus-dev libogg-dev ${DSD_APT} autoconf libtool xxd libspdlog-dev ${EXTRA_APT}
 
 # Older base images (Debian bullseye, Ubuntu focal) ship a cmake too old for
@@ -84,9 +84,13 @@ git config --global --add safe.directory /root/SDRPlusPlus
 
 cd SDRPlusPlus
 cmake --preset ci-linux-deb ${CURL_DEP_ARG} ${DSD_CMAKE_ARG}
+bash scripts/test_rtl_async_teardown.sh \
+    deps/build-default-Release/dep_librtlsdr-prefix/src/dep_librtlsdr
 cd build
 make VERBOSE=1 -j"$(nproc)"
 cpack
+
+bash ../scripts/smoke_test_deb.sh SDRPP-FULL-v*.deb
 
 cd ..
 mv build/SDRPP-FULL-v*.deb sdrpp_full_pkg.deb

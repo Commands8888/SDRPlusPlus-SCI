@@ -17,6 +17,10 @@ permissions:
 env:
     FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+concurrency:
+    group: sdrpp-full-linux-${{ github.ref }}
+    cancel-in-progress: true
+
 jobs:
     prepare:
         runs-on: ubuntu-latest
@@ -67,6 +71,11 @@ jobs:
                       filename_suffix: -ubuntu-resolute-amd64
                       volk_package: libvolk-dev
                       curl_source: system
+                    - base_image: ubuntu:stonking
+                      suffix: ubuntu-stonking-amd64
+                      filename_suffix: -ubuntu-stonking-amd64
+                      volk_package: libvolk-dev
+                      curl_source: system
         uses: ./.github/workflows/build_linux.yml
         with:
             base_image: ${{ matrix.base_image }}
@@ -96,33 +105,15 @@ jobs:
             contents: write
             actions: read
         steps:
+            - uses: actions/checkout@v5
             - uses: actions/download-artifact@v7
               with:
                   path: packages
                   pattern: SDRPP-FULL-v${{ needs.prepare.outputs.version }}*
                   merge-multiple: true
 
-            - name: Publish Linux downloads to the existing release
+            - name: Publish the single stable Linux release
               env:
                   GH_TOKEN: ${{ github.token }}
                   VER: ${{ needs.prepare.outputs.version }}
-              run: |
-                  set -euo pipefail
-                  gh release view Realease --repo "$GITHUB_REPOSITORY" >/dev/null
-                  gh release upload Realease packages/* --repo "$GITHUB_REPOSITORY" --clobber
-                  # Keep the release tag aligned with the commit that built its newest files.
-                  gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/Realease" \
-                      -f sha="$GITHUB_SHA" -F force=true >/dev/null
-                  # Update only the summary line; preserve João's release notes.
-                  old_notes=$(gh release view Realease --repo "$GITHUB_REPOSITORY" --json body --jq .body)
-                  summary="SDRPP-FULL v${VER} Linux (DSD + oldDSD); commit $GITHUB_SHA"
-                  if [[ "$old_notes" == *$'\n'* ]]; then
-                      gh release edit Realease --repo "$GITHUB_REPOSITORY" \
-                          --notes "${summary}"$'\n'"${old_notes#*$'\n'}"
-                  else
-                      gh release edit Realease --repo "$GITHUB_REPOSITORY" --notes "$summary"
-                  fi
-                  # Preserve older working packages for rollback.
-                  if gh release view nightly --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-                      gh release delete nightly --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
-                  fi
+              run: bash scripts/publish_linux_release.sh packages "$VER"

@@ -27,7 +27,17 @@ endif ()
 # root-path filtering (Android NDK restricts find_library / find_path /
 # find_package to the NDK sysroot, which doesn't contain our deps prefix).
 # No-op on native toolchains. Same rationale as deps/cmake/AddCMakeProject.cmake.
-find_package(libusb CONFIG REQUIRED PATHS "${_root}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+find_package(libusb CONFIG QUIET PATHS "${_root}" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+if (TARGET libusb::libusb)
+    set(_rtlsdr_usb_target libusb::libusb)
+else ()
+    # Distro builds embed rtlsdr but use the system libusb (a separate API).
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(_rtlsdr_usb REQUIRED IMPORTED_TARGET libusb-1.0)
+    set(_rtlsdr_usb_target PkgConfig::_rtlsdr_usb)
+endif ()
+find_package(Threads REQUIRED)
+set(rtlsdr_VERSION "2.0.3")
 
 if (NOT TARGET rtlsdr::rtlsdr_static)
     add_library(rtlsdr::rtlsdr_static STATIC IMPORTED)
@@ -42,12 +52,14 @@ if (NOT TARGET rtlsdr::rtlsdr_static)
     find_path(_rtlsdr_inc "rtl-sdr.h" HINTS "${_root}/include" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH ${_sdrpp_no_cache})
     set_target_properties(rtlsdr::rtlsdr_static PROPERTIES
         IMPORTED_LOCATION "${_rtlsdr_static_imp}"
+        SDRPP_RTLSDR_PRIVATE_VERSION "2.0.3"
+        SDRPP_RTLSDR_PRIVATE_PATCHED TRUE
         INTERFACE_INCLUDE_DIRECTORIES "${_rtlsdr_inc}"
         INTERFACE_COMPILE_DEFINITIONS "rtlsdr_STATIC"
-        INTERFACE_LINK_LIBRARIES "libusb::libusb")
+        INTERFACE_LINK_LIBRARIES "${_rtlsdr_usb_target};Threads::Threads")
 endif ()
 
-if (NOT TARGET rtlsdr::rtlsdr)
+if (NOT TARGET rtlsdr::rtlsdr AND EXISTS "${_root}/lib/librtlsdr.so")
     add_library(rtlsdr::rtlsdr SHARED IMPORTED)
     find_library(_rtlsdr_shared_imp NAMES rtlsdr HINTS "${_root}/lib" "${_root}/bin" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH ${_sdrpp_no_cache})
     find_path(_rtlsdr_inc "rtl-sdr.h" HINTS "${_root}/include" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH ${_sdrpp_no_cache})

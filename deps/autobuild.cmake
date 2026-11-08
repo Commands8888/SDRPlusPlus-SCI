@@ -134,6 +134,7 @@ set(_deps_marker "${_deps_install_prefix}/share/sdrpp-deps/recipe-hash")
 file(GLOB_RECURSE _recipe_hash_inputs
     LIST_DIRECTORIES FALSE
     "${_deps_src_dir}/+*/*.cmake"
+    "${_deps_src_dir}/+*/*.patch"
     "${_deps_src_dir}/+*/patches/*"
     "${_deps_src_dir}/cmake/*.cmake")
 list(APPEND _recipe_hash_inputs

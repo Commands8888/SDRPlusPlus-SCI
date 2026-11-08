@@ -1,0 +1,74 @@
+# SDRPP-FULL: honor BUILD_SHARED_LIBS=OFF and BUILD_UTILITIES=OFF.
+# Build/install only the PIC archive; never ship a global librtlsdr.so.
+# Also correct the upstream static target's libusb linkage.
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index a2c9057..33aaf12 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -46,6 +46,9 @@ set(VERSION_INFO_MINOR_VERSION 0) # increment minor on feature-level changes
+ set(VERSION_INFO_PATCH_VERSION 3) # increment patch for bug fixes and docs
+ include(Version) # setup version info
+ 
++option(BUILD_SHARED_LIBS "Build the shared rtl-sdr library" ON)
++option(BUILD_UTILITIES "Build the rtl-sdr command-line tools" ON)
++
+ ########################################################################
+ # Compiler specific setup
+ ########################################################################
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 408a270..294ade4 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -18,6 +18,7 @@
+ ########################################################################
+ # Setup shared library variant
+ ########################################################################
++if(BUILD_SHARED_LIBS)
+ add_library(rtlsdr SHARED librtlsdr.c
+   tuner_e4k.c tuner_fc0012.c tuner_fc0013.c tuner_fc2580.c tuner_r82xx.c)
+ target_link_libraries(rtlsdr ${LIBUSB_LIBRARIES} ${THREADS_PTHREADS_LIBRARY})
+@@ -32,13 +33,14 @@ set_target_properties(rtlsdr PROPERTIES OUTPUT_NAME rtlsdr)
+ set_target_properties(rtlsdr PROPERTIES SOVERSION 0)
+ set_target_properties(rtlsdr PROPERTIES VERSION ${LIBVER})
+ generate_export_header(rtlsdr)
++endif()
+ 
+ ########################################################################
+ # Setup static library variant
+ ########################################################################
+ add_library(rtlsdr_static STATIC librtlsdr.c
+   tuner_e4k.c tuner_fc0012.c tuner_fc0013.c tuner_fc2580.c tuner_r82xx.c)
+-target_link_libraries(rtlsdr ${LIBUSB_LIBRARIES} ${THREADS_PTHREADS_LIBRARY})
++target_link_libraries(rtlsdr_static PUBLIC ${LIBUSB_LIBRARIES} ${THREADS_PTHREADS_LIBRARY})
+ target_include_directories(rtlsdr_static PUBLIC
+   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+   $<INSTALL_INTERFACE:include>  # <prefix>/include
+@@ -69,6 +71,7 @@ ENDIF(MSVC)
+ ########################################################################
+ # Setup libraries used in executables
+ ########################################################################
++if(BUILD_UTILITIES)
+ add_library(convenience_static STATIC
+     convenience/convenience.c
+ )
+@@ -160,12 +163,18 @@ endif()
+ ########################################################################
+ # Install built library files & utilities
+ ########################################################################
++endif() # BUILD_UTILITIES
++
++if(BUILD_SHARED_LIBS)
+ install(TARGETS rtlsdr EXPORT RTLSDR-export
+   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} # .so/.dylib file
+   )
++endif()
+ install(TARGETS rtlsdr_static EXPORT RTLSDR-export
+   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} # .so/.dylib file
+   )
++if(BUILD_UTILITIES)
+ install(TARGETS rtl_sdr rtl_tcp rtl_test rtl_fm rtl_eeprom rtl_adsb rtl_power rtl_biast
+   DESTINATION ${CMAKE_INSTALL_BINDIR}
+   )
++endif()
+

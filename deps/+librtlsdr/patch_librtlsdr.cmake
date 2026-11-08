@@ -2,8 +2,7 @@
 # Run with -DSRC=<source-dir> -P this-script.
 #
 # Streaming-teardown crash fix, kept as a proper git patch because it is
-# intended for an upstream pull request (github.com/AlexandreRouma/rtl-sdr,
-# and applicable to osmocom rtl-sdr as well).
+# authored by Vojtech Bubnik for SDRIAK, rebased onto Osmocom v2.0.3.
 #
 # rtlsdr_read_async()'s cancellation loop can exit with transfers still owned
 # by the kernel (libusb_handle_events() error, or the dev_lost unplug path
@@ -13,4 +12,5 @@
 #
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/patch_helpers.cmake)
 
-patch_apply_git_or_fail("${SRC}" "${CMAKE_CURRENT_LIST_DIR}/0001-fix-use-after-free-in-async-teardown.patch")
+patch_apply_git_or_fail("${SRC}" "${CMAKE_CURRENT_LIST_DIR}/0002-fix-use-after-free-in-async-teardown.patch")
+patch_apply_git_or_fail("${SRC}" "${CMAKE_CURRENT_LIST_DIR}/0003-private-static-build.patch")

@@ -2,6 +2,14 @@
 
 The detailed per-release history of the SDR++ iak fork, including alpha and beta pre-releases. For a brief summary of the major releases only, see [changelog.md](changelog.md).
 
+## v1.7.6 - 2026-11-08
+
+- Pin the RTL source to Osmocom rtl-sdr 2.0.3, including official RTL-SDR Blog V4L support.
+- Update Vojtech Bubnik's async USB teardown fix: stop callback resubmission, cancel remaining transfers, drain for up to 500 ms and avoid freeing transfers still owned by libusb.
+- Embed the patched static archive only in the RTL source plugin, hide its symbols and verify that .deb/AppImage packages neither ship nor depend on a shared librtlsdr.
+- Add Ubuntu 26.10 (Stonking) packages alongside 26.04 LTS (Resolute), 24.04 LTS (Noble), Jammy and Debian Bookworm/Trixie.
+- Keep only the current version's downloads in the existing stable release after all builds succeed.
+
 ## v1.7.5 - 2026-11-08
 
 - Restore the original SDRPP-FULL Linux launcher icon path from the working v1.7.3 release.

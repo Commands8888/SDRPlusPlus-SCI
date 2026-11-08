@@ -2,6 +2,12 @@
 
 Major releases only. For the detailed per-release history including alpha releases, see [changelog-full.md](changelog-full.md).
 
+## v1.7.6 - SDRPP-FULL
+
+Embed Osmocom rtl-sdr 2.0.3 and Vojtech Bubnik's USB teardown correction in
+the RTL plugin. Add Blog V4L support without replacing the system RTL driver.
+Add Ubuntu 26.10 packages and keep a single current set of stable downloads.
+
 ## v1.7.5 - SDRPP-FULL
 
 Restore the working Linux launcher icon, install the supplied bandplans in the

@@ -187,6 +187,18 @@ jobs:
                       volk_package: libvolk-dev
                       extra_apt: ''
                       curl_source: system
+                    - base_image: ubuntu:stonking
+                      runner: ubuntu-latest
+                      artifact: ubuntu-stonking-amd64
+                      volk_package: libvolk-dev
+                      extra_apt: ''
+                      curl_source: system
+                    - base_image: ubuntu:stonking
+                      runner: ubuntu-24.04-arm
+                      artifact: ubuntu-stonking-aarch64
+                      volk_package: libvolk-dev
+                      extra_apt: ''
+                      curl_source: system
         needs: [prepare]
         uses: ./.github/workflows/build_linux.yml
         with:
@@ -266,6 +278,8 @@ jobs:
         if: github.ref_type == 'tag'
 
         steps:
+        - uses: actions/checkout@v5
+
         # Only the merged -all bundle is needed here; pulling it by name (into a
         # dir of the same name) avoids re-downloading all ~25 per-platform
         # Linux artifacts that create_full_archive already merged into it.
@@ -275,22 +289,11 @@ jobs:
             name: SDRPP-FULL-v${{ needs.prepare.outputs.version }}-all
             path: SDRPP-FULL-v${{ needs.prepare.outputs.version }}-all
 
-        - name: Publish GitHub Release
+        - name: Publish the single stable Linux release
           env:
             GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
             VER: ${{ needs.prepare.outputs.version }}
-          run: |
-            # Mark alpha/beta/rc tags as pre-releases on GitHub.
-            PRERELEASE_FLAG=""
-            if echo "${{ github.ref_name }}" | grep -qE '\-(alpha|beta|rc)[0-9]*$'; then
-              PRERELEASE_FLAG="--prerelease"
-            fi
-            gh release create "${{ github.ref_name }}" \
-              SDRPP-FULL-v${VER}-all/* \
-              --title "SDRPP-FULL ${{ github.ref_name }}" \
-              --generate-notes \
-              $PRERELEASE_FLAG \
-              --repo ${{ github.repository }}
+          run: bash scripts/publish_linux_release.sh "SDRPP-FULL-v${VER}-all" "$VER"
 
     check_spelling:
         runs-on: ubuntu-latest

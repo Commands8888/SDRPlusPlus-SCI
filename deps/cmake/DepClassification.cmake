@@ -162,8 +162,10 @@ sdrpp_register_dep(librfnm
     USAGE module-private)
 
 sdrpp_register_dep(librtlsdr
-    DEFAULT_SOURCE  portable:bundled distro:system android:bundled
-    DEFAULT_LINKAGE portable:static distro:shared android:static
+    # Private patched driver in both .deb and AppImage: never replace or
+    # depend on the host's librtlsdr shared library.
+    DEFAULT_SOURCE  portable:bundled distro:bundled android:bundled
+    DEFAULT_LINKAGE portable:static distro:static android:static
     USAGE module-private)
 
 sdrpp_register_dep(libxml2

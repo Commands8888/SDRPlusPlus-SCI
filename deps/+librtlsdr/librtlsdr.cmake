@@ -1,10 +1,12 @@
 #
-# librtlsdr — built from the AlexandreRouma fork (matches the Android kit).
+# librtlsdr 2.0.3 from Osmocom, including RTL-SDR Blog V4L support.
+# Vojtech Bubnik's USB teardown fix is applied locally. Linux packages embed
+# only the static library in rtl_sdr_source; no shared driver is installed.
 #
 add_cmake_project(librtlsdr
-    GIT_REPOSITORY https://github.com/AlexandreRouma/rtl-sdr
-    # master @ 2026-05-31; bump when intentional.
-    GIT_TAG        ddd6811b71359c299cf31b4e3e75fbb1ed5c964d
+    GIT_REPOSITORY https://github.com/osmocom/rtl-sdr
+    # v2.0.3 (2026-08-11); update intentionally after testing.
+    GIT_TAG        797f8143266d983c56d8f35d2d442527529dd8a5
     GIT_SHALLOW    OFF
     PATCH_COMMAND  ${CMAKE_COMMAND}
                        -DSRC=<SOURCE_DIR>
@@ -16,6 +18,8 @@ add_cmake_project(librtlsdr
             -P ${CMAKE_CURRENT_LIST_DIR}/fix_librtlsdr_config.cmake
     CMAKE_ARGS
         -DBUILD_UTILITIES=OFF
+        -DINSTALL_UDEV_RULES=OFF
+        -DDETACH_KERNEL_DRIVER=ON
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
 )
 

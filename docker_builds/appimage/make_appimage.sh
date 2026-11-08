@@ -56,6 +56,9 @@ make -j"$(nproc)"
 rm -rf "${APPDIR}"
 make install DESTDIR="${APPDIR}"
 
+bash "${SRC_DIR}/scripts/verify_private_rtlsdr.sh" \
+    "${APPDIR}/usr/lib/sdrpp-full/plugins/rtl_sdr_source.so" "${APPDIR}"
+
 # linuxdeploy expects the icon and desktop file at the AppDir root in addition
 # to the standard usr/share/... locations.
 cp "${APPDIR}/usr/share/${APP_ID}/icons/sdrpp.png" "${APPDIR}/${APP_ID}.png"
@@ -180,6 +183,15 @@ unset PKG_CONFIG_PATH
 # appimagetool fetches the static type2-runtime for ${ARCH} while packing
 export ARCH
 appimagetool "${APPDIR}" "${OUT}"
+
+# Verify the packed payload too, after linuxdeploy's dependency bundling.
+verify_dir=$(mktemp -d)
+(cd "$verify_dir" && "$OUT" --appimage-extract >/dev/null)
+bash "${SRC_DIR}/scripts/verify_private_rtlsdr.sh" \
+    "$verify_dir/squashfs-root/usr/lib/sdrpp-full/plugins/rtl_sdr_source.so" \
+    "$verify_dir/squashfs-root"
+bash "${SRC_DIR}/scripts/smoke_test_rtl_runtime.sh" "$verify_dir/squashfs-root"
+rm -rf "$verify_dir"
 
 ls -lh "${OUT}"
 echo "=== AppImage ready: ${OUT} ==="

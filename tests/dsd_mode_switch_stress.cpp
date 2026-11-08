@@ -51,6 +51,9 @@ int main() {
     int switches = 0;
     auto select = [&](int mode) {
         auto next = makeMode(mode);
+        std::printf("Stress switch %d: %s -> %s\n", switches + 1,
+            current ? current->getName() : "initial", next->getName());
+        std::fflush(stdout);
         assert(std::isfinite(next->getDefaultBandwidth()));
         assert(next->getDefaultBandwidth() > 0);
         // Match RadioModule's prepare-new, detach-audio, stop-old sequence.

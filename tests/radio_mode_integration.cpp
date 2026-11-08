@@ -30,6 +30,13 @@ public:
         handler.startHandler = [](void* ctx) { static_cast<ModeIntegration*>(ctx)->startIQ(); };
         handler.stopHandler = [](void* ctx) { static_cast<ModeIntegration*>(ctx)->stopIQ(); };
         sigpath::sourceManager.registerSource("Mode test IQ", &handler);
+        SinkManager::SinkProvider sink;
+        sink.ctx = this;
+        sink.create = [](SinkManager::Stream* stream, std::string name, void* ctx) {
+            static_cast<ModeIntegration*>(ctx)->audioStream = stream;
+            return SinkManager::NullSink::create(stream, name, nullptr);
+        };
+        sigpath::sinkManager.registerSinkProvider("Mode test sink", sink);
         frames.handler = [](MainWindow::FrameDrawArgs, void* ctx) { static_cast<ModeIntegration*>(ctx)->frame(); };
         frames.ctx = this;
         gui::mainWindow.onFrameDraw.bindHandler(&frames);
@@ -90,6 +97,8 @@ private:
         if (finished) return;
         if (!started) {
             if (!core::modComManager.interfaceExists("Radio")) fail("Radio interface missing");
+            sigpath::sinkManager.setStreamSink("Radio", "Mode test sink");
+            if (!audioStream) fail("test sink missing");
             audioInput = sigpath::sinkManager.bindStream("Radio");
             if (!audioInput) fail("Radio audio stream missing");
             audio.init(audioInput, [](dsp::stereo_t* data, int count, void* ctx) {
@@ -106,6 +115,9 @@ private:
         if (++waitFrames < 3) return;
         waitFrames = 0;
         if (invalidAudio.load()) fail("non-finite audio sample");
+        // Exercise actual audio-device rate changes and HPF coefficient ownership.
+        if (position == sequence.size() / 2) audioStream->setSampleRate(44100);
+        if (position == sequence.size() * 3 / 4) audioStream->setSampleRate(96000);
         if (position == sequence.size()) {
             if (!audioBuffers.load()) fail("Radio produced no audio buffers");
             std::sort(latencies.begin(), latencies.end());
@@ -115,6 +127,7 @@ private:
             finished = true;
             stopAudio();
             gui::mainWindow.setPlayState(false);
+            if (core::moduleManager.deleteInstance("Radio") != 0) fail("Radio instance teardown failed");
             glfwSetWindowShouldClose(glfwGetCurrentContext(), GLFW_TRUE);
             return;
         }
@@ -141,6 +154,7 @@ private:
     std::atomic<bool> invalidAudio{false};
     std::atomic<int> audioBuffers{0};
     dsp::stream<dsp::stereo_t>* audioInput = nullptr;
+    SinkManager::Stream* audioStream = nullptr;
     dsp::sink::Handler<dsp::stereo_t> audio;
     std::thread worker;
     std::vector<int> sequence;

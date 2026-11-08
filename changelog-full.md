@@ -8,6 +8,8 @@ The detailed per-release history of the SDR++ iak fork, including alpha and beta
 - Accept a full input buffer and terminate cleanly on oversized packets instead of rereading an unflushed packet.
 - Synchronize DSD status copies with decoder writes and publish an independent oldDSD UI snapshot without holding its mutex while waiting for DSP input/output.
 - Initialize RAW's audio sample rate before the initial bandwidth query; the configured sink rate is still applied by init().
+- Avoid a negative bit shift when upsampling CW/DSD audio, verified with UBSan and finite-output/gain checks at all Radio AF rates.
+- Reconfigure both AF resampler rates together, reuse high-pass coefficients at an unchanged audio rate, release replaced coefficients and destroy the selected demodulator when its Radio instance is removed.
 - Test all 110 directed pairs of the 11 Radio modes twice (440 switches), with buffer-boundary and concurrent-status sanitizer regressions plus a full application/VFO/audio integration test.
 - Run Noble's test gate inside the active build container before packaging; retain João's descriptive Linux download names and manually written release notes.
 

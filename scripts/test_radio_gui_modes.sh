@@ -25,7 +25,7 @@ cat > "$tmp/config/config.json" <<EOF
 }
 EOF
 cat > "$tmp/config/radio_config.json" <<'EOF'
-{"Radio": {"selectedDemodId": 0, "CW": {"tone": 800}, "CW-R": {"tone": 900}}}
+{"Radio": {"selectedDemodId": 0, "FM": {"highPass": true}, "AM": {"highPass": true}, "CW": {"tone": 800}, "CW-R": {"tone": 900}}}
 EOF
 status=0
 env -u APPDIR LD_LIBRARY_PATH="$build:${LD_LIBRARY_PATH:-}" LIBGL_ALWAYS_SOFTWARE=1 \
@@ -43,5 +43,7 @@ import json,sys
 with open(sys.argv[1]) as f: radio=json.load(f)['Radio']
 assert radio['CW']['tone'] == 800
 assert radio['CW-R']['tone'] == 900
-print('OK: CW/CW-R tone settings preserved')
+assert radio['FM']['highPass'] is True
+assert radio['AM']['highPass'] is True
+print('OK: CW/CW-R tone and FM/AM high-pass settings preserved')
 PY

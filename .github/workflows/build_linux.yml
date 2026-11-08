@@ -66,6 +66,15 @@ jobs:
               --env GITHUB_REF_TYPE \
               sdrpp_build /root/do_build.sh
 
+        - name: Test concurrent DSD status on the runner
+          if: inputs.build_dsd && inputs.base_image == 'ubuntu:noble'
+          # Clang TSan runs directly on the ephemeral runner, where its runtime
+          # can arrange shadow memory without Docker's personality restriction.
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y clang libclang-rt-dev libitpp-dev libvolk-dev libglfw3-dev libfftw3-dev libzstd-dev
+            CXX=clang++ bash scripts/test_dsd_modes.sh build status
+
         # The container writes into the bind-mounted source tree as root,
         # so the resulting files (including newly downloaded tarballs in
         # deps/.pkg_cache/) are owned by root on the runner host. The

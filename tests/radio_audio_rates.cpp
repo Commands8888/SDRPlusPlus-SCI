@@ -9,7 +9,7 @@ int main() {
     dsp::stream<dsp::stereo_t> input;
     dsp::multirate::RationalResampler<dsp::stereo_t> resampler;
     resampler.init(&input, 250000.0, 48000.0);
-    const double rates[] = {50000.0, 250000.0, 48000.0, 3000.0, 9600.0, 8000.0};
+    const double rates[] = {50000.0, 250000.0, 15000.0, 24000.0, 48000.0, 3000.0, 9600.0, 8000.0};
     for (double rate : rates) {
         resampler.setRates(rate, 48000.0);
         int total = 0;

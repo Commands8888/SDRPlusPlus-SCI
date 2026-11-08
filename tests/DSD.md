@@ -17,7 +17,7 @@ no receiver, sound device or display.
   thread copies NewDSD status, then exercises oldDSD's published status with a
   live input/output stream (ThreadSanitizer). Before the fix, TSan reported a
   concurrent string copy/write in `NewDSD::getDMRStatus()`.
-- `radio_audio_rates.cpp` checks the real AF resampler at 3/8/9.6/48/50/250 kHz
+- `radio_audio_rates.cpp` checks the real AF resampler at 3/8/9.6/15/24/48/50/250 kHz
   input and 48 kHz output, including finite stereo output and steady-state gain.
   Before the fix, UBSan reported `shift exponent -4 is negative` for CW's
   3 kHz -> 48 kHz conversion.

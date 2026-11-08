@@ -59,6 +59,14 @@ namespace bandplanmenu {
     }
 
     void draw(void* ctx) {
+        // A missing or empty bandplans directory must not index an empty list.
+        if (bandplan::bandplanNames.empty()) {
+            ImGui::TextUnformatted("No band plans available.");
+            return;
+        }
+        if (bandplanId < 0 || bandplanId >= (int)bandplan::bandplanNames.size()) {
+            bandplanId = 0;
+        }
         float menuColumnWidth = ImGui::GetContentRegionAvail().x;
         ImGui::PushItemWidth(menuColumnWidth);
         if (ImGui::Combo("##_bandplan_name_", &bandplanId, bandplan::bandplanNameTxt.c_str())) {

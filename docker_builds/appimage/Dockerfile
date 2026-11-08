@@ -11,7 +11,7 @@ RUN apt-get -o Acquire::Retries=3 update && \
     apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
         build-essential git pkg-config ca-certificates \
         python3 python3-pip \
-        wget unzip p7zip-full file patchelf xxd \
+        wget curl unzip p7zip-full file patchelf xxd \
         autoconf automake libtool \
         libglfw3-dev libpulse-dev libasound2-dev \
         libssl-dev liborc-0.4-dev libitpp-dev && \
@@ -28,14 +28,14 @@ RUN python3 -m pip install --no-cache-dir mako cmake
 # AppImage no longer needs libfuse2 on the host.
 # Both ship as AppImages that need FUSE — inside Docker we extract them once.
 RUN ARCH=$(uname -m) && \
-    wget -q -O /tmp/linuxdeploy.AppImage \
+    curl --fail --location --retry 5 --retry-delay 5 --silent --show-error -o /tmp/linuxdeploy.AppImage \
         "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${ARCH}.AppImage" && \
     chmod +x /tmp/linuxdeploy.AppImage && \
     cd /tmp && /tmp/linuxdeploy.AppImage --appimage-extract >/dev/null && \
     mv squashfs-root /opt/linuxdeploy && \
     ln -sf /opt/linuxdeploy/AppRun /usr/local/bin/linuxdeploy && \
     rm /tmp/linuxdeploy.AppImage && \
-    wget -q -O /tmp/appimagetool.AppImage \
+    curl --fail --location --retry 5 --retry-delay 5 --silent --show-error -o /tmp/appimagetool.AppImage \
         "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${ARCH}.AppImage" && \
     chmod +x /tmp/appimagetool.AppImage && \
     cd /tmp && /tmp/appimagetool.AppImage --appimage-extract >/dev/null && \

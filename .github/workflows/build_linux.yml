@@ -37,7 +37,9 @@ env:
 
 jobs:
     build:
-        runs-on: ${{ inputs.runner }}
+        # Noble's host-side race test needs the same runtime SONAMEs as its
+        # container (Volk 3.1, FLAC 12); ubuntu-latest may use newer ABIs.
+        runs-on: ${{ inputs.base_image == 'ubuntu:noble' && inputs.runner == 'ubuntu-latest' && 'ubuntu-24.04' || inputs.runner }}
 
         steps:
         - uses: actions/checkout@v5
@@ -72,7 +74,7 @@ jobs:
           # can arrange shadow memory without Docker's personality restriction.
           run: |
             sudo apt-get update
-            sudo apt-get install -y clang libclang-rt-dev libitpp-dev libvolk-dev libglfw3-dev libfftw3-dev libzstd-dev
+            sudo apt-get install -y clang libclang-rt-dev libitpp-dev libvolk-dev libglfw3-dev libfftw3-dev libzstd-dev libflac-dev libopus-dev
             CXX=clang++ bash scripts/test_dsd_modes.sh build status
 
         # The container writes into the bind-mounted source tree as root,

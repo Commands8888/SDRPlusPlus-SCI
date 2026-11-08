@@ -15,9 +15,13 @@ CURL_DEP_ARG=""
 CURL_APT="libcurl4-openssl-dev"
 DSD_APT=""
 DSD_CMAKE_ARG=""
+MODE_TEST_APT=""
 if [ "${BUILD_DSD:-false}" = "true" ]; then
     DSD_APT="libitpp-dev"
     DSD_CMAKE_ARG="-DOPT_BUILD_DSD=ON"
+fi
+if [ "${RUN_DSD_TESTS:-false}" = "true" ]; then
+    MODE_TEST_APT="xvfb xauth libgl1-mesa-dri python3"
 fi
 if [ "$CURL_SOURCE" = "bundled" ]; then
     EXTRA_APT="${EXTRA_APT:-} libssl-dev"
@@ -61,7 +65,7 @@ apt_install_with_refresh() {
 # Install dependencies and tools
 apt_install_with_refresh build-essential cmake git pkg-config libfftw3-dev libglfw3-dev ${VOLK_PACKAGE} liborc-0.4-dev libzstd-dev ${CURL_APT} libairspy-dev libairspyhf-dev \
     libiio-dev libad9361-dev librtaudio-dev libhackrf-dev libusb-1.0-0-dev libbladerf-dev liblimesuite-dev p7zip-full wget portaudio19-dev \
-    libcodec2-dev libflac-dev libopus-dev libogg-dev ${DSD_APT} autoconf libtool xxd libspdlog-dev ${EXTRA_APT}
+    libcodec2-dev libflac-dev libopus-dev libogg-dev ${DSD_APT} ${MODE_TEST_APT} autoconf libtool xxd libspdlog-dev ${EXTRA_APT}
 
 # Older base images (Debian bullseye, Ubuntu focal) ship a cmake too old for
 # the --preset CLI (3.19+) and CMakePresets v3 (3.21+) that deps/ relies on.
@@ -88,6 +92,12 @@ bash scripts/test_rtl_async_teardown.sh \
     deps/build-default-Release/dep_librtlsdr-prefix/src/dep_librtlsdr
 cd build
 make VERBOSE=1 -j"$(nproc)"
+if [ "${RUN_DSD_TESTS:-false}" = "true" ]; then
+    # Run while this build container is alive, before packaging/upload.
+    ASAN_OPTIONS=detect_leaks=0:quarantine_size_mb=32 \
+        bash ../scripts/test_dsd_modes.sh "$PWD"
+    bash ../scripts/test_radio_gui_modes.sh "$PWD"
+fi
 cpack
 
 bash ../scripts/smoke_test_deb.sh SDRPP-FULL-v*.deb

@@ -1,5 +1,7 @@
 #include <atomic>
+#include <cassert>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <memory>
 #include <thread>
@@ -10,7 +12,24 @@
 #include <dsp/sink/handler_sink.h>
 #include <utils/optionlist.h>
 #include "demod.h"
-#include <dsp/sink/handler_sink.h>
+
+static std::unique_ptr<demod::Demodulator> makeMode(int mode) {
+    switch (mode) {
+    case 0: return std::make_unique<demod::NFM>();
+    case 1: return std::make_unique<demod::WFM>();
+    case 2: return std::make_unique<demod::AM>();
+    case 3: return std::make_unique<demod::DSB>();
+    case 4: return std::make_unique<demod::RAW>();
+    case 5: return std::make_unique<demod::LSB>();
+    case 6: return std::make_unique<demod::USB>();
+    case 7: return std::make_unique<demod::CW>();
+    case 8: return std::make_unique<demod::CWR>();
+    case 9: return std::make_unique<demod::DSD>();
+    case 10: return std::make_unique<demod::OldDSD>();
+    }
+    std::abort();
+}
+
 int main() {
     ConfigManager config;
     config.conf = nlohmann::json::object();
@@ -29,27 +48,29 @@ int main() {
         }
     });
     std::unique_ptr<demod::Demodulator> current;
-    const int modes[] = {1, 0, 1, 2, 0, 2, 3, 4, 5};
-    for (int i = 0; i < 270; ++i) {
-        std::unique_ptr<demod::Demodulator> next;
-        switch (modes[i % 9]) {
-        case 0: next = std::make_unique<demod::CWR>(); break;
-        case 1: next = std::make_unique<demod::DSD>(); break;
-        case 2: next = std::make_unique<demod::OldDSD>(); break;
-        case 3: next = std::make_unique<demod::NFM>(); break;
-        case 4: next = std::make_unique<demod::LSB>(); break;
-        case 5: next = std::make_unique<demod::USB>(); break;
-        }
-        // RadioModule prepares the new demodulator while the old one runs.
+    int switches = 0;
+    auto select = [&](int mode) {
+        auto next = makeMode(mode);
+        assert(std::isfinite(next->getDefaultBandwidth()));
+        assert(next->getDefaultBandwidth() > 0);
+        // Match RadioModule's prepare-new, detach-audio, stop-old sequence.
         next->init("Radio test", &config, &input, next->getDefaultBandwidth(), 48000.0);
         audio.setInput(&dummy);
         if (current) current->stop();
         current = std::move(next);
-        std::printf("switch %d: %s\n", i, current->getName());
-        std::fflush(stdout);
         audio.setInput(current->getOutput());
         current->start();
+        ++switches;
         std::this_thread::sleep_for(std::chrono::milliseconds(3));
+    };
+    for (int round = 0; round < 2; ++round) {
+        for (int from = 0; from < 11; ++from) {
+            for (int to = 0; to < 11; ++to) {
+                if (from == to) continue;
+                select(from);
+                select(to);
+            }
+        }
     }
     audio.setInput(&dummy);
     current->stop();
@@ -57,6 +78,6 @@ int main() {
     audio.stop();
     input.stopWriter();
     producer.join();
-    std::printf("OK: 270 live mode switches; %d audio buffers\n", buffers.load());
+    assert(buffers.load() > 0);
+    std::printf("OK: %d live switches; all 110 directed mode pairs twice; %d audio buffers\n", switches, buffers.load());
 }
-

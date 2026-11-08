@@ -2,6 +2,12 @@
 
 Major releases only. For the detailed per-release history including alpha releases, see [changelog-full.md](changelog-full.md).
 
+## v1.7.5 - SDRPP-FULL
+
+Restore the working Linux launcher icon, install the supplied bandplans in the
+directory the application reads, and guard the menu when no plans are present.
+Publish Linux builds to João's existing release instead of a nightly release.
+
 ## v1.7.4 - SDRPP-FULL
 
 Register the new logo as a Linux desktop icon for the application menu and taskbar.

@@ -80,6 +80,11 @@ jobs:
           working-directory: ${{ runner.workspace }}
           run: docker cp build:/root/SDRPlusPlus/sdrpp_full_pkg.deb ./${{ inputs.artifact }}.deb
 
+        - name: Verify bandplans in Debian package
+          run: |
+            dpkg-deb --contents "${{ runner.workspace }}/${{ inputs.artifact }}.deb" > "${RUNNER_TEMP}/sdrpp-package-files.txt"
+            grep -qE '/share/sdrpp-full/bandplans/[^/]+\.json$' "${RUNNER_TEMP}/sdrpp-package-files.txt"
+
         - name: Save Deb Archive
           uses: actions/upload-artifact@v6
           with:

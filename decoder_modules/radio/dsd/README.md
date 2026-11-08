@@ -28,7 +28,7 @@ arm64. It also builds DSD-enabled x86_64 and aarch64 AppImages with ITPP
 bundled. The separate `Build SDRPP-FULL Linux packages` workflow builds the five
 amd64 `.deb` packages for Debian bookworm/trixie and Ubuntu jammy/noble/resolute,
 plus the x86_64 AppImage. It runs on master pushes, publishes successful builds
-to the nightly release, and can also be started manually. On a local Noble
+to João's existing `Realease` release, and can also be started manually. On a local Noble
 system with the normal JP build dependencies and `libitpp-dev` installed:
 
 ```sh
@@ -37,7 +37,7 @@ cmake --build build --parallel 4
 (cd build && cpack)
 ```
 
-The resulting `build/SDRPP-FULL-v1.7.4.deb` contains SDRPP-FULL and
+The resulting `build/SDRPP-FULL-v1.7.5.deb` contains SDRPP-FULL and
 the Radio plugin with both DSD modes. The option `OPT_BUILD_DSD=OFF` leaves
 the original radio plugin without these modes. The option defaults to OFF;
 the Linux packaging workflows explicitly turn it on and install `libitpp-dev`.
@@ -54,12 +54,13 @@ If JP edits the same lines as SCI, the sync run reports a merge conflict for
 manual resolution. GitHub may require enabling Actions to create pull requests
 under repository Settings > Actions > General > Workflow permissions.
 
-On each push to master, `Build SDRPP-FULL Linux packages` refreshes the nightly
-release after its five `.deb` builds and AppImage succeed.
+On each push to master, `Build SDRPP-FULL Linux packages` adds the successful
+builds to João's existing `Realease` release after its five `.deb` builds and
+AppImage succeed.
 
 For a tagged release, update `VERSION_STR` in `core/src/version.h`, commit and
 push, then create and push a matching `v<version>` tag. The workflow checks
-that the tag matches the header. For example, `1.7.4` requires
-`v1.7.4`; bump the version for later releases so package upgrades have a
+that the tag matches the header. For example, `1.7.5` requires
+`v1.7.5`; bump the version for later releases so package upgrades have a
 newer version. GitHub Releases host the downloads; automatic upgrades through
 `apt` require a separate signed APT repository.

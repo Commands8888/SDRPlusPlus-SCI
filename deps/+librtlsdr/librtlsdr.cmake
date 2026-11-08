@@ -3,6 +3,15 @@
 # Vojtech Bubnik's USB teardown fix is applied locally. Linux packages embed
 # only the static library in rtl_sdr_source; no shared driver is installed.
 #
+sdrpp_dep_is_system(libusb _rtlsdr_system_usb)
+set(_rtlsdr_usb_args "")
+if (NOT _rtlsdr_system_usb)
+    # AppImage supplies explicit libusb paths through DEP_CMAKE_OPTS. The
+    # upstream pkg-config probe would overwrite those with host paths (or
+    # fail when the host has no libusb-dev), losing the bundled dependency.
+    list(APPEND _rtlsdr_usb_args -DCMAKE_DISABLE_FIND_PACKAGE_PkgConfig=ON)
+endif ()
+
 add_cmake_project(librtlsdr
     GIT_REPOSITORY https://github.com/osmocom/rtl-sdr
     # v2.0.3 (2026-08-11); update intentionally after testing.
@@ -17,6 +26,7 @@ add_cmake_project(librtlsdr
             -DROOT=${SDRPP_DEPS_INSTALL_PREFIX}
             -P ${CMAKE_CURRENT_LIST_DIR}/fix_librtlsdr_config.cmake
     CMAKE_ARGS
+        ${_rtlsdr_usb_args}
         -DBUILD_UTILITIES=OFF
         -DINSTALL_UDEV_RULES=OFF
         -DDETACH_KERNEL_DRIVER=ON

@@ -2,6 +2,10 @@
 
 The detailed per-release history of the SDR++ iak fork, including alpha and beta pre-releases. For a brief summary of the major releases only, see [changelog.md](changelog.md).
 
+## v1.7.4 - 2026-11-07
+
+- Register the SDRPP-FULL logo in the hicolor icon theme and use its own icon name from the Linux launcher, so menu and taskbar icons resolve to the new artwork.
+
 ## v1.7.3 - 2026-11-07
 
 - Replace the JP logo in the Linux app with João's SDRPP-FULL artwork; keep the supplied icon formats aligned in the source tree.

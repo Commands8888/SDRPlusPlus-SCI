@@ -418,6 +418,10 @@ configure_file(${CMAKE_SOURCE_DIR}/sdrpp-full.desktop ${CMAKE_CURRENT_BINARY_DIR
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/sdrpp-full.desktop DESTINATION share/applications)
+    install(FILES ${CMAKE_SOURCE_DIR}/root/res/icons/sdrpp-full-48.png
+        DESTINATION share/icons/hicolor/48x48/apps RENAME sdrpp-full.png)
+    install(FILES ${CMAKE_SOURCE_DIR}/root/res/icons/sdrpp.png
+        DESTINATION share/icons/hicolor/512x512/apps RENAME sdrpp-full.png)
     install(FILES ${CMAKE_SOURCE_DIR}/license DESTINATION share/doc/sdrpp-full RENAME copyright)
 
     # Bundled-shared deps (sdrplay's closed-source blob, librfnm, any other dep

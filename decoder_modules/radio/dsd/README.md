@@ -37,7 +37,7 @@ cmake --build build --parallel 4
 (cd build && cpack)
 ```
 
-The resulting `build/SDRPP-FULL-v1.7.3.deb` contains SDRPP-FULL and
+The resulting `build/SDRPP-FULL-v1.7.4.deb` contains SDRPP-FULL and
 the Radio plugin with both DSD modes. The option `OPT_BUILD_DSD=OFF` leaves
 the original radio plugin without these modes. The option defaults to OFF;
 the Linux packaging workflows explicitly turn it on and install `libitpp-dev`.
@@ -59,7 +59,7 @@ release after its five `.deb` builds and AppImage succeed.
 
 For a tagged release, update `VERSION_STR` in `core/src/version.h`, commit and
 push, then create and push a matching `v<version>` tag. The workflow checks
-that the tag matches the header. For example, `1.7.3` requires
-`v1.7.3`; bump the version for later releases so package upgrades have a
+that the tag matches the header. For example, `1.7.4` requires
+`v1.7.4`; bump the version for later releases so package upgrades have a
 newer version. GitHub Releases host the downloads; automatic upgrades through
 `apt` require a separate signed APT repository.

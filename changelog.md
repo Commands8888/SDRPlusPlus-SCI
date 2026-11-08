@@ -2,6 +2,10 @@
 
 Major releases only. For the detailed per-release history including alpha releases, see [changelog-full.md](changelog-full.md).
 
+## v1.7.4 - SDRPP-FULL
+
+Register the new logo as a Linux desktop icon for the application menu and taskbar.
+
 ## v1.7.3 - SDRPP-FULL
 
 Add João's SDRPP-FULL logo, three themes, three waterfall colormaps, and

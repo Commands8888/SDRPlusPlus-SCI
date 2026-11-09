@@ -44,7 +44,7 @@ static ComplexArray referenceMMSE(const ComplexArray& x, Params& p) {
     return result;
 }
 
-static void compare(const dsp::complex_t* a, const dsp::complex_t* b, int count, double tolerance) {
+static void compare(const dsp::complex_t* a, const dsp::complex_t* b, int count, double tolerance, int context) {
     double error = 0, energy = 0;
     for (int i = 0; i < count; ++i) {
         assert(std::isfinite(a[i].re) && std::isfinite(a[i].im));
@@ -53,7 +53,11 @@ static void compare(const dsp::complex_t* a, const dsp::complex_t* b, int count,
         error += d.re*d.re+d.im*d.im;
         energy += b[i].re*b[i].re+b[i].im*b[i].im;
     }
-    assert(error <= tolerance*tolerance*std::max(energy,1.0e-20));
+    if (error > tolerance*tolerance*std::max(energy,1.0e-20)) {
+        std::fprintf(stderr,"Signal comparison failed: relative RMS %.9g (limit %.9g), count %d, bins/rate %d\n",
+            std::sqrt(error/std::max(energy,1.0e-20)),tolerance,count,context);
+        std::abort();
+    }
 }
 
 int main() {
@@ -65,9 +69,16 @@ int main() {
         // Independent oracle computes the complete inverse spectrum, exactly
         // as v1.7.8 did; tests odd/even phases and history across tiny packets.
         std::vector<dsp::complex_t> history(bins-1), input(4096), actual(4096), expected(4096);
-        std::vector<dsp::complex_t> fftIn(bins), fftOut(bins), inverseIn(bins), inverseOut(bins);
-        auto forward = fftwf_plan_dft_1d(bins,(fftwf_complex*)fftIn.data(),(fftwf_complex*)fftOut.data(),FFTW_FORWARD,FFTW_ESTIMATE);
-        auto backward = fftwf_plan_dft_1d(bins,(fftwf_complex*)inverseIn.data(),(fftwf_complex*)inverseOut.data(),FFTW_BACKWARD,FFTW_ESTIMATE);
+        // Match the original analyzer's FFTW/VOLK alignment as well as its
+        // magnitude kernel, including architectures with approximate SIMD sqrt.
+        auto fftIn = (dsp::complex_t*)fftwf_malloc(bins*sizeof(dsp::complex_t));
+        auto fftOut = (dsp::complex_t*)fftwf_malloc(bins*sizeof(dsp::complex_t));
+        auto inverseIn = (dsp::complex_t*)fftwf_malloc(bins*sizeof(dsp::complex_t));
+        auto inverseOut = (dsp::complex_t*)fftwf_malloc(bins*sizeof(dsp::complex_t));
+        std::fill_n(inverseIn,bins,dsp::complex_t{0,0});
+        auto amplitude = dsp::buffer::alloc<float>(bins);
+        auto forward = fftwf_plan_dft_1d(bins,(fftwf_complex*)fftIn,(fftwf_complex*)fftOut,FFTW_FORWARD,FFTW_ESTIMATE);
+        auto backward = fftwf_plan_dft_1d(bins,(fftwf_complex*)inverseIn,(fftwf_complex*)inverseOut,FFTW_BACKWARD,FFTW_ESTIMATE);
         for (int pass = 0; pass < 3; ++pass) {
             filter.reset(); history.assign(bins-1,{});
             for (int count : {1,7,256,4096,31}) {
@@ -76,19 +87,26 @@ int main() {
                 for (int i = 0; i < count; ++i) {
                     for (int j = 0; j < bins; ++j) fftIn[j] = history[i+j]*dsp::window::nuttall(j,bins-1);
                     fftwf_execute(forward);
-                    int best = 0;
-                    for (int j = 1; j < bins; ++j) if (fftOut[j].amplitude() > fftOut[best].amplitude()) best = j;
+                    // Preserve the existing magnitude/bin-selection kernel.
+                    // ARM SIMD magnitude may approximate sqrt differently
+                    // from scalar libm near a tie; this test isolates the
+                    // replacement of the inverse transform, not that kernel.
+                    uint32_t best;
+                    volk_32fc_magnitude_32f(amplitude,(lv_32fc_t*)fftOut,bins);
+                    volk_32f_index_max_32u(&best,amplitude,bins);
                     inverseIn[best] = fftOut[best];
                     fftwf_execute(backward);
                     expected[i] = inverseOut[bins/2];
                     inverseIn[best] = {0,0};
                 }
                 filter.process(count,input.data(),actual.data());
-                compare(actual.data(),expected.data(),count,2.0e-6);
+                compare(actual.data(),expected.data(),count,2.0e-6,bins);
                 history.erase(history.begin(),history.begin()+count);
             }
         }
         fftwf_destroy_plan(forward); fftwf_destroy_plan(backward);
+        fftwf_free(fftIn); fftwf_free(fftOut); fftwf_free(inverseIn); fftwf_free(inverseOut);
+        dsp::buffer::free(amplitude);
     }
     std::puts("OK: IF NR matches full inverse-FFT oracle for all four presets and packet histories");
     for (int rate : {8000,44100,192000}) {
@@ -107,7 +125,7 @@ int main() {
                 auto a = MMSE::logmmse_all(input,&actual);
                 auto b = referenceMMSE(input,expected);
                 assert(a.size() == b.size());
-                compare(a.data(),b.data(),a.size(),2.0e-5);
+                compare(a.data(),b.data(),a.size(),2.0e-5,rate);
                 if (silent) for (auto x : a) assert(x.re == 0 && x.im == 0);
             }
             // Incomplete frames must not run/adapt the noise model repeatedly.

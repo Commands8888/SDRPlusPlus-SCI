@@ -16,7 +16,7 @@ if [ "$suite" = status ]; then
     exit 0
 fi
 export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0:quarantine_size_mb=32}"
-"${CXX:-c++}" "${flags[@]}" -fsanitize=address,undefined -fno-sanitize-recover=all -no-pie "$repo_root/tests/audio_buffer_flow.cpp" -lvolk -pthread -o "$tmp/queue"
+"${CXX:-c++}" "${flags[@]}" -DSDRPP_AUDIO_TRACK_ALLOCATIONS=1 -fsanitize=address,undefined -fno-sanitize-recover=all -no-pie "$repo_root/tests/audio_buffer_flow.cpp" -lvolk -pthread -o "$tmp/queue"
 timeout --signal=TERM --kill-after=5 30s "$tmp/queue"
 "${CXX:-c++}" "${flags[@]}" -fsanitize=address,undefined -fno-sanitize-recover=all -no-pie "$repo_root/tests/iq_frame_flow.cpp" -lvolk -pthread -o "$tmp/iq"
 timeout --signal=TERM --kill-after=5 30s "$tmp/iq"

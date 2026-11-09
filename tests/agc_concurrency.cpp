@@ -9,7 +9,7 @@ template<class T> void check() {
     dsp::stream<T> input;
     dsp::loop::AGC<T> agc;
     agc.init(&input, 1.0, 0.01, 0.001, 1000.0, 10.0, 1.0);
-    std::atomic<bool> ready{false}, done{false};
+    std::atomic<bool> ready{false};
     std::thread processing([&] {
         std::array<T, 256> in{}, out{};
         for (size_t i = 0; i < in.size(); ++i) {
@@ -18,7 +18,9 @@ template<class T> void check() {
             else in[i] = {level, -level};
         }
         ready = true;
-        while (!done.load()) agc.process(in.size(), in.data(), out.data());
+        // A finite workload also finishes on slow TSan/ARM runners. Unlike a
+        // live stream, a tight synthetic loop has no I/O wait between blocks.
+        for (int block = 0; block < 5000; ++block) agc.process(in.size(), in.data(), out.data());
     });
     while (!ready.load()) std::this_thread::yield();
     for (int i = 0; i < 5000; ++i) {
@@ -36,7 +38,6 @@ template<class T> void check() {
             agc.setEnabled(true);
         }
     }
-    done = true;
     processing.join();
     std::puts("OK: AGC processing, UI controls and gain telemetry are synchronized");
 }

@@ -14,8 +14,10 @@ test -f "$radio"
 
 compile() {
     local name=$1 sanitizer=$2
+    local executable_flags=()
+    if [ "$sanitizer" != thread ]; then executable_flags=(-no-pie); fi
     "${CXX:-c++}" -std=c++17 -O1 -g -DSDRPP_FULL_DSD=1 \
-        -fsanitize="$sanitizer" -fno-sanitize-recover=all -fno-omit-frame-pointer \
+        -fsanitize="$sanitizer" -fno-sanitize-recover=all -fno-omit-frame-pointer "${executable_flags[@]}" \
         -I"$repo_root/core/src" -I"$repo_root/core/src/imgui" \
         -I"$repo_root/decoder_modules/radio/src" -I"$dsd/src/dsp" -I"$dsd/mbelib" \
         "$repo_root/tests/$name.cpp" "$dsd/src/dsp/dsd_demod.cpp" \

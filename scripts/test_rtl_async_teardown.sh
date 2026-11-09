@@ -6,7 +6,7 @@ repo_root=$(cd "$(dirname "$0")/.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 cc -O1 -g -ffunction-sections -fdata-sections -Drtlsdr_STATIC \
-    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -fsanitize=address,undefined -fno-omit-frame-pointer -no-pie \
     $(pkg-config --cflags libusb-1.0) \
     -I"$source_dir/include" -I"$source_dir/src" \
     "$repo_root/tests/rtl_async_teardown.c" \

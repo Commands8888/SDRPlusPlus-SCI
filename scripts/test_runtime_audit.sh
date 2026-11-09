@@ -10,10 +10,12 @@ trap 'rm -rf "$tmp"' EXIT
 compile() {
     local name=$1 sanitizer=$2
     shift 2
+    local executable_flags=()
+    if [ "$sanitizer" != thread ]; then executable_flags=(-no-pie); fi
     # The instrumented source copies must not interpose the shared core's
     # global theme/palette containers (which would initialize them twice).
     "${CXX:-c++}" -std=c++17 -O1 -g -fvisibility=hidden -fsanitize="$sanitizer" \
-        -fno-sanitize-recover=all -fno-omit-frame-pointer \
+        -fno-sanitize-recover=all -fno-omit-frame-pointer "${executable_flags[@]}" \
         -I"$repo_root/core/src" -I"$repo_root/core/src/imgui" \
         "$repo_root/tests/$name.cpp" "$@" -L"$build" -lsdrpp_full_core -lvolk -pthread \
         -Wl,-rpath,"$build" -o "$tmp/$name"

@@ -3,6 +3,14 @@
 #include <fstream>
 
 #include <filesystem>
+#include <cstdio>
+#include <cstring>
+#include <cerrno>
+#include <cstdlib>
+#ifndef _WIN32
+#include <unistd.h>
+#include <sys/stat.h>
+#endif
 
 ConfigManager::ConfigManager() {
 }
@@ -16,7 +24,9 @@ void ConfigManager::setPath(std::string file) {
 }
 
 void ConfigManager::load(json def, bool lock) {
-    if (lock) { mtx.lock(); }
+    std::unique_lock<std::mutex> guard(mtx, std::defer_lock);
+    if (lock) { guard.lock(); }
+    conf = def;
     if (path == "") {
         flog::error("Config manager tried to load file with no path specified");
         return;
@@ -33,7 +43,12 @@ void ConfigManager::load(json def, bool lock) {
 
     try {
         std::ifstream file(path.c_str());
-        file >> conf;
+        json loaded;
+        file >> loaded;
+        if (def.is_object() && !loaded.is_object()) {
+            throw std::runtime_error("expected a JSON object");
+        }
+        conf = std::move(loaded);
         file.close();
     }
     catch (const std::exception& e) {
@@ -41,21 +56,62 @@ void ConfigManager::load(json def, bool lock) {
         conf = def;
         save(false);
     }
-    if (lock) { mtx.unlock(); }
 }
 
 void ConfigManager::save(bool lock) {
-    if (lock) { mtx.lock(); }
-    std::ofstream file(path.c_str());
-    file << conf.dump(4);
-    file.close();
-    if (lock) { mtx.unlock(); }
+    std::unique_lock<std::mutex> guard(mtx, std::defer_lock);
+    if (lock) { guard.lock(); }
+    try {
+        const std::string data = conf.dump(4);
+#ifndef _WIN32
+        // Write a private sibling file and atomically replace the old config.
+        // A force-close during autosave must not leave a truncated JSON file.
+        auto target = std::filesystem::path(path);
+        if (std::filesystem::is_symlink(target)) {
+            auto link = std::filesystem::read_symlink(target);
+            target = std::filesystem::weakly_canonical(link.is_absolute() ? link : target.parent_path() / link);
+        }
+        std::string pattern = target.string() + ".tmp.XXXXXX";
+        std::vector<char> temp(pattern.begin(),pattern.end());
+        temp.push_back('\0');
+        const int fd = mkstemp(temp.data());
+        if (fd < 0) {
+            flog::error("Could not save config '{}': {}", path, std::strerror(errno));
+            return;
+        }
+        struct stat previous;
+        if (stat(target.c_str(), &previous) == 0) { fchmod(fd, previous.st_mode & 0777); }
+        FILE* file = fdopen(fd, "w");
+        if (!file) {
+            close(fd);
+            std::remove(temp.data());
+            flog::error("Could not open temporary config for '{}'", path);
+            return;
+        }
+        bool written = std::fwrite(data.data(), 1, data.size(), file) == data.size();
+        if (std::fclose(file) != 0) { written = false; }
+        if (!written || std::rename(temp.data(), target.c_str()) != 0) {
+            flog::error("Could not replace config '{}': {}", path, std::strerror(errno));
+            std::remove(temp.data());
+        }
+#else
+        std::ofstream file(path.c_str());
+        file << data;
+        if (!file) { flog::error("Could not save config '{}'", path); }
+#endif
+    }
+    catch (const std::exception& e) {
+        flog::error("Could not save config '{}': {}", path, e.what());
+    }
 }
 
 void ConfigManager::enableAutoSave() {
     if (autoSaveEnabled) { return; }
     autoSaveEnabled = true;
-    termFlag = false;
+    {
+        std::lock_guard<std::mutex> lock(termMtx);
+        termFlag = false;
+    }
     autoSaveThread = std::thread(&ConfigManager::autoSaveWorker, this);
 }
 
@@ -81,18 +137,16 @@ void ConfigManager::release(bool modified) {
 
 void ConfigManager::autoSaveWorker() {
     while (autoSaveEnabled) {
-        if (!mtx.try_lock()) {
-            flog::warn("ConfigManager locked, waiting...");
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            continue;
+        if (mtx.try_lock()) {
+            if (changed) {
+                changed = false;
+                save(false);
+            }
+            mtx.unlock();
         }
-        if (changed) {
-            changed = false;
-            save(false);
-        }
-        mtx.unlock();
 
-        // Sleep but listen for wakeup call
+        // Also interruptible when the config is busy: shutdown must not wait
+        // through a fixed one-second polling sleep for each module.
         {
             std::unique_lock<std::mutex> lock(termMtx);
             termCond.wait_for(lock, std::chrono::milliseconds(1000), [this]() { return termFlag; });

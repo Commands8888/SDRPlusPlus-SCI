@@ -7,14 +7,20 @@ ENV DEBIAN_FRONTEND=noninteractive
 # through deps/ with the dedicated appimage preset; keep only host ABI/runtime
 # packages here (GLFW/OpenGL stack, audio backend headers, Python for Volk, and
 # generic build tools).
-RUN apt-get -o Acquire::Retries=3 update && \
-    apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+RUN set -eu; \
+    for attempt in 1 2 3; do \
+        rm -rf /var/lib/apt/lists/*; \
+        if apt-get -o Acquire::Retries=3 -o APT::Update::Error-Mode=any update && \
+           apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
         build-essential git pkg-config ca-certificates \
         python3 python3-pip \
         wget curl unzip p7zip-full file patchelf xxd \
         autoconf automake libtool \
         libglfw3-dev libpulse-dev libasound2-dev \
-        libssl-dev liborc-0.4-dev libitpp-dev && \
+        libssl-dev liborc-0.4-dev libitpp-dev; then break; fi; \
+        if [ "$attempt" = 3 ]; then exit 1; fi; \
+        sleep 10; \
+    done; \
     rm -rf /var/lib/apt/lists/*
 
 # Focal's apt cmake (3.16) predates `cmake --preset` (needs 3.19+) and

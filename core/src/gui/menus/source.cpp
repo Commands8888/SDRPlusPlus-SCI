@@ -203,6 +203,14 @@ namespace sourcemenu {
         sigpath::sourceManager.onSourceUnregistered.bindHandler(&sourcesChangedHandler);
     }
 
+    void end() {
+        // Module teardown must not select another device/rebuild the frontend
+        // for every source removed after the render loop has finished.
+        sigpath::sourceManager.onSourceRegistered.unbindHandler(&sourcesChangedHandler);
+        sigpath::sourceManager.onSourceUnregister.unbindHandler(&sourceUnregisterHandler);
+        sigpath::sourceManager.onSourceUnregistered.unbindHandler(&sourcesChangedHandler);
+    }
+
     void addOffset(const std::string& name, double offset) {
         // Acquire the config file
         core::configManager.acquire();

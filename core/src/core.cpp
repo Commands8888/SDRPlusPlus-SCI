@@ -16,6 +16,7 @@
 #include <cmath>
 #include <filesystem>
 #include <gui/menus/theme.h>
+#include <gui/menus/source.h>
 #include <backend.h>
 
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -554,15 +555,20 @@ int sdrpp_main(int argc, char* argv[]) {
 
     // On android, none of this shutdown should happen due to the way the UI works
 #ifndef __ANDROID__
-    // Shut down all modules
+    // Stop the producer while the UI and its callbacks are still alive, then
+    // drain DSP workers and destroy instances before shutting down their libs.
+    gui::mainWindow.setPlayState(false);
+    sigpath::iqFrontEnd.stop();
+    sourcemenu::end();
+    core::moduleManager.deleteAllInstances();
+
+    // Shut down all modules after their instances have released devices/audio.
     for (auto& [name, mod] : core::moduleManager.modules) {
         mod.end();
     }
 
     // Terminate backend (TODO: CHECK RETURN VALUE)
     backend::end();
-
-    sigpath::iqFrontEnd.stop();
 
     core::configManager.disableAutoSave();
     core::configManager.save();

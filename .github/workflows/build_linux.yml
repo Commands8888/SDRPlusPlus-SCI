@@ -37,6 +37,7 @@ env:
 
 jobs:
     build:
+        timeout-minutes: 45
         # Noble's host-side race test needs the same runtime SONAMEs as its
         # container (Volk 3.1, FLAC 12); ubuntu-latest may use newer ABIs.
         runs-on: ${{ inputs.base_image == 'ubuntu:noble' && inputs.runner == 'ubuntu-latest' && 'ubuntu-24.04' || inputs.runner }}
@@ -76,6 +77,7 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y clang libclang-rt-dev libitpp-dev libvolk-dev libglfw3-dev libfftw3-dev libzstd-dev libflac-dev libopus-dev
             CXX=clang++ bash scripts/test_dsd_modes.sh build status
+            CXX=clang++ bash scripts/test_runtime_audit.sh build status
 
         # The container writes into the bind-mounted source tree as root,
         # so the resulting files (including newly downloaded tarballs in
@@ -102,3 +104,7 @@ jobs:
           with:
               name: ${{ inputs.artifact }}
               path: ${{ runner.workspace }}/${{ inputs.artifact }}.deb
+
+        - name: Remove the temporary build container
+          if: always()
+          run: docker rm -f build >/dev/null 2>&1 || true

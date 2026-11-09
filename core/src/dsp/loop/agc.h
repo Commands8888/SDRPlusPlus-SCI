@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include "../processor.h"
 
 namespace dsp::loop {
@@ -21,18 +22,21 @@ namespace dsp::loop {
             _initGain = initGain;
             amp = _setPoint / _initGain;
             _gain = std::min<float>(_initGain, _maxGain);
+            reportedGain.store(_gain, std::memory_order_relaxed);
             _enabled = true;
             base_type::init(in);
         }
 
         float getGain() {
-            return _gain;
+            return reportedGain.load(std::memory_order_relaxed);
         }
 
         void setGain(float gain) {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+            std::lock_guard<std::mutex> stateLock(stateMtx);
             _gain = gain;
+            reportedGain.store(_gain, std::memory_order_relaxed);
             // Seed the envelope so that when enabled, the AGC continues from this gain
             // instead of recomputing it from a stale envelope on the next sample
             if (gain > 0.0f) { amp = _setPoint / gain; }
@@ -41,18 +45,21 @@ namespace dsp::loop {
         void setEnabled(bool enabled) {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+            std::lock_guard<std::mutex> stateLock(stateMtx);
             _enabled = enabled;
         }
 
         void setSetPoint(double setPoint) {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+            std::lock_guard<std::mutex> stateLock(stateMtx);
             _setPoint = setPoint;
         }
 
         void setAttack(double attack) {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+            std::lock_guard<std::mutex> stateLock(stateMtx);
             _attack = attack;
             _invAttack = 1.0f - _attack;
         }
@@ -60,6 +67,7 @@ namespace dsp::loop {
         void setDecay(double decay) {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+            std::lock_guard<std::mutex> stateLock(stateMtx);
             _decay = decay;
             _invDecay = 1.0f - _decay;
         }
@@ -67,29 +75,38 @@ namespace dsp::loop {
         void setMaxGain(double maxGain) {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+            std::lock_guard<std::mutex> stateLock(stateMtx);
             _maxGain = maxGain;
         }
 
         void setMaxOutputAmp(double maxOutputAmp) {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+            std::lock_guard<std::mutex> stateLock(stateMtx);
             _maxOutputAmp = maxOutputAmp;
         }
 
         void setInitialGain(double initGain) {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+            std::lock_guard<std::mutex> stateLock(stateMtx);
             _initGain = initGain;
         }
 
         void reset() {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+            std::lock_guard<std::mutex> stateLock(stateMtx);
             amp = _setPoint / _initGain;
             _gain = std::min<float>(_initGain, _maxGain);
+            reportedGain.store(_gain, std::memory_order_relaxed);
         }
 
         inline int process(int count, T* in, T* out) {
+            // One lock per block, never per sample or across stream I/O.
+            // Keep this separate from ctrlMtx: stop() holds ctrlMtx while
+            // joining the worker, which must be allowed to finish process().
+            std::lock_guard<std::mutex> stateLock(stateMtx);
             for (int i = 0; i < count; i++) {
                 // Get signal amplitude
                 float inAmp;
@@ -135,6 +152,7 @@ namespace dsp::loop {
                     out[i] = in[i] * ((inAmp * _gain > _maxOutputAmp) ? (_maxOutputAmp / inAmp) : _gain);
                 }
             }
+            reportedGain.store(_gain, std::memory_order_relaxed);
             return count;
         }
 
@@ -162,6 +180,8 @@ namespace dsp::loop {
         bool _enabled = true;
 
         float amp = 1.0;
+        std::mutex stateMtx;
+        std::atomic<float> reportedGain{1.0f};
 
     };
 }

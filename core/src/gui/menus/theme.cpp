@@ -4,7 +4,7 @@
 #include <gui/style.h>
 
 namespace thememenu {
-    int themeId;
+    int themeId = -1;
     std::vector<std::string> themeNames;
     std::string themeNamesTxt;
 
@@ -20,9 +20,9 @@ namespace thememenu {
         auto it = std::find(themeNames.begin(), themeNames.end(), selectedThemeName);
         if (it == themeNames.end()) {
             it = std::find(themeNames.begin(), themeNames.end(), "Dark");
-            selectedThemeName = "Dark";
+            if (it == themeNames.end() && !themeNames.empty()) it = themeNames.begin();
         }
-        themeId = std::distance(themeNames.begin(), it);
+        themeId = it == themeNames.end() ? -1 : std::distance(themeNames.begin(), it);
         style::applyScaledStyle(applyTheme);
 
         themeNamesTxt = "";
@@ -33,7 +33,10 @@ namespace thememenu {
     }
 
      void applyTheme() {
-         gui::themeManager.applyTheme(themeNames[themeId]);
+        if (themeId >= 0 && themeId < static_cast<int>(themeNames.size())) {
+            gui::themeManager.applyTheme(themeNames[themeId]);
+        }
+        else { ImGui::StyleColorsDark(); }
     }
 
     void draw(void* ctx) {

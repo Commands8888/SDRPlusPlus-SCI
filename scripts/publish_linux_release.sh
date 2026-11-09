@@ -41,7 +41,7 @@ gh api -X PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/${release_tag}" \
 # Preserve João's notes below the current version summary.
 gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" \
     --json body --jq .body > "$tmp/old-notes.md"
-printf 'SDRPP-FULL v%s Linux — mode-switch memory/status fixes; private RTL-SDR 2.0.3 and Blog V4L; commit %s\n' \
+printf 'SDRPP-FULL v%s Linux — audited startup/shutdown, synchronized AGC/CW and exact-rate resampling; private RTL-SDR 2.0.3 and Blog V4L; commit %s\n' \
     "$version" "$GITHUB_SHA" > "$tmp/notes.md"
 if head -n 1 "$tmp/old-notes.md" | grep -q '^SDRPP-FULL v[0-9].*Linux'; then
     tail -n +2 "$tmp/old-notes.md" >> "$tmp/notes.md"

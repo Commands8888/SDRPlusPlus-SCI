@@ -38,6 +38,7 @@ bool ThemeManager::loadThemesFromDir(std::string path) {
 }
 
 bool ThemeManager::loadTheme(std::string path) {
+    try {
     if (!std::filesystem::is_regular_file(path)) {
         flog::error("Theme file doesn't exist: {0}", path);
         return false;
@@ -85,7 +86,8 @@ bool ThemeManager::loadTheme(std::string path) {
 
         // Exception for non-imgu colors
         if (param == "WaterfallBackground" || param == "ClearColor" || param == "FFTHoldColor") {
-            if (val[0] != '#' || !std::all_of(val.begin() + 1, val.end(), ::isxdigit) || val.length() != 9) {
+            uint8_t rgba[4];
+            if (!decodeRGBA(val, rgba)) {
                 flog::error("Theme {0} contains invalid {1} field. Expected hex RGBA color", path, param);
                 return false;
             }
@@ -96,7 +98,8 @@ bool ThemeManager::loadTheme(std::string path) {
 
         // If param is a color, check that it's a valid RGBA hex value
         if (IMGUI_COL_IDS.find(param) != IMGUI_COL_IDS.end()) {
-            if (val[0] != '#' || !std::all_of(val.begin() + 1, val.end(), ::isxdigit) || val.length() != 9) {
+            uint8_t rgba[4];
+            if (!decodeRGBA(val, rgba)) {
                 flog::error("Theme {0} contains invalid {1} field. Expected hex RGBA color", path, param);
                 return false;
             }
@@ -113,6 +116,11 @@ bool ThemeManager::loadTheme(std::string path) {
     themes[name] = thm;
 
     return true;
+    }
+    catch (const std::exception& e) {
+        flog::error("Could not load theme '{}': {}", path, e.what());
+        return false;
+    }
 }
 
 bool ThemeManager::applyTheme(std::string name) {
@@ -175,7 +183,7 @@ bool ThemeManager::applyTheme(std::string name) {
 }
 
 bool ThemeManager::decodeRGBA(std::string str, uint8_t out[4]) {
-    if (str[0] != '#' || !std::all_of(str.begin() + 1, str.end(), ::isxdigit) || str.length() != 9) {
+    if (str.length() != 9 || str[0] != '#' || !std::all_of(str.begin() + 1, str.end(), [](unsigned char c) { return std::isxdigit(c); })) {
         return false;
     }
     out[0] = std::stoi(str.substr(1, 2), NULL, 16);

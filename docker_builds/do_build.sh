@@ -21,7 +21,7 @@ if [ "${BUILD_DSD:-false}" = "true" ]; then
     DSD_CMAKE_ARG="-DOPT_BUILD_DSD=ON"
 fi
 if [ "${RUN_DSD_TESTS:-false}" = "true" ]; then
-    MODE_TEST_APT="xvfb xauth libgl1-mesa-dri python3"
+    MODE_TEST_APT="xvfb xauth libgl1-mesa-dri python3 gdb"
 fi
 if [ "$CURL_SOURCE" = "bundled" ]; then
     EXTRA_APT="${EXTRA_APT:-} libssl-dev"
@@ -97,10 +97,14 @@ if [ "${RUN_DSD_TESTS:-false}" = "true" ]; then
     bash ../scripts/test_radio_gui_modes.sh "$PWD"
     ASAN_OPTIONS=detect_leaks=0:quarantine_size_mb=32 \
         bash ../scripts/test_dsd_modes.sh "$PWD" memory
+    bash ../scripts/test_runtime_audit.sh "$PWD" memory
 fi
 cpack
 
 bash ../scripts/smoke_test_deb.sh SDRPP-FULL-v*.deb
+if [ "${RUN_DSD_TESTS:-false}" = "true" ]; then
+    bash ../scripts/test_package_startup.sh "$PWD" SDRPP-FULL-v*.deb
+fi
 
 cd ..
 mv build/SDRPP-FULL-v*.deb sdrpp_full_pkg.deb

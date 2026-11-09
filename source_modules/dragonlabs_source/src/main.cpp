@@ -75,7 +75,8 @@ public:
     }
 
     ~DragonLabsSourceModule() {
-
+        stop(this);
+        sigpath::sourceManager.unregisterSource("Dragon Labs");
     }
 
     void postInit() {}

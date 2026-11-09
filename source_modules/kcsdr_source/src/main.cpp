@@ -52,7 +52,8 @@ public:
     }
 
     ~KCSDRSourceModule() {
-        
+        stop(this);
+        sigpath::sourceManager.unregisterSource("KCSDR");
     }
 
     void postInit() {}

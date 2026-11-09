@@ -167,8 +167,9 @@ void MainWindow::init() {
         bool enabled = _module["enabled"];
         flog::info("Initializing {0} ({1})", name, mod);
         LoadingScreen::show("Initializing " + name + " (" + mod + ")");
-        core::moduleManager.createInstance(name, mod);
-        if (!enabled) { core::moduleManager.disableInstance(name); }
+        if (core::moduleManager.createInstance(name, mod) == 0 && !enabled) {
+            core::moduleManager.disableInstance(name);
+        }
     }
 
     // Load color maps
@@ -190,10 +191,14 @@ void MainWindow::init() {
         flog::warn("Color map directory {0} does not exist, not loading modules from directory", modulesDir);
     }
 
-    gui::waterfall.updatePalletteFromArray(colormaps::maps["Turbo"].map, colormaps::maps["Turbo"].entryCount);
+    colormaps::ensureDefault();
+    gui::waterfall.updatePalletteFromArray(colormaps::maps.at("Turbo").map, colormaps::maps.at("Turbo").entryCount);
 
+    LoadingScreen::show("Initializing source");
     sourcemenu::init();
+    LoadingScreen::show("Initializing audio");
     sinkmenu::init();
+    LoadingScreen::show("Initializing menus");
     bandplanmenu::init();
     displaymenu::init();
     vfo_color_menu::init();

@@ -100,6 +100,10 @@ int ModuleManager::createInstance(std::string name, std::string module) {
     Instance_t inst;
     inst.module = modules[module];
     inst.instance = inst.module.createInstance(name);
+    if (!inst.instance) {
+        flog::error("Module '{}' could not create instance '{}'", module, name);
+        return -1;
+    }
     instances[name] = inst;
     onInstanceCreated.emit(name);
     return 0;
@@ -121,6 +125,16 @@ int ModuleManager::deleteInstance(std::string name) {
 int ModuleManager::deleteInstance(ModuleManager::Instance* instance) {
     flog::error("Delete instance not implemented");
     return -1;
+}
+
+void ModuleManager::deleteAllInstances() {
+    // Release consumers before the audio/source providers they use. The
+    // deletion events let dependent instances detach their interfaces first.
+    while (!instances.empty()) {
+        const std::string name = instances.rbegin()->first;
+        flog::info("Stopping {}", name);
+        deleteInstance(name);
+    }
 }
 
 int ModuleManager::enableInstance(std::string name) {

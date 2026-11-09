@@ -25,6 +25,7 @@ namespace dsp::channel {
         void setOffset(double offset) {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
+            std::lock_guard<std::mutex> stateLock(stateMtx);
             phaseDelta = lv_cmake(cos(offset), sin(offset));
         }
 
@@ -36,11 +37,16 @@ namespace dsp::channel {
             assert(base_type::_block_init);
             std::lock_guard<std::recursive_mutex> lck(base_type::ctrlMtx);
             tempStop();
-            phase = lv_cmake(1.0f, 0.0f);
+            {
+                std::lock_guard<std::mutex> stateLock(stateMtx);
+                phase = lv_cmake(1.0f, 0.0f);
+            }
             tempStart();
         }
 
         inline int process(int count, const complex_t* in, complex_t* out) {
+            // CW pitch changes may arrive while the rotator processes a block.
+            std::lock_guard<std::mutex> stateLock(stateMtx);
 #if VOLK_VERSION >= 030100
             volk_32fc_s32fc_x2_rotator2_32fc((lv_32fc_t*)out, (lv_32fc_t*)in, &phaseDelta, &phase, count);
 #else
@@ -63,5 +69,6 @@ namespace dsp::channel {
     protected:
         lv_32fc_t phase;
         lv_32fc_t phaseDelta;
+        std::mutex stateMtx;
     };
 }

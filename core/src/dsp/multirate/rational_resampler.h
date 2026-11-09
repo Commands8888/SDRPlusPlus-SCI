@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <numeric>
+#include <climits>
 #include "../processor.h"
 #include "../filter/decimating_fir.h"
 #include "../taps/from_array.h"
@@ -121,7 +122,8 @@ namespace dsp::multirate {
             // Calculate highest power-of-two decimation for the power decimator 
             // Upsampling (CW/DSD audio -> sink rate) needs no predecimation.
             // A negative exponent here made the following shift undefined.
-            int predecPower = std::max<int>(0, std::min<int>(floor(log2(_inSamplerate / _outSamplerate)), PowerDecimator<T>::getMaxRatio()));
+            int maxPredecPower = std::ilogb(PowerDecimator<T>::getMaxRatio());
+            int predecPower = std::clamp<int>(floor(log2(_inSamplerate / _outSamplerate)), 0, maxPredecPower);
             int predecRatio = std::min<int>(1 << predecPower, PowerDecimator<T>::getMaxRatio());
             double intSamplerate = _inSamplerate;
 
@@ -139,8 +141,30 @@ namespace dsp::multirate {
             int interp = OutSR / gcd;
             int decim = IntSR / gcd;
 
+            // Reduce ORIGINAL integer-Hz rates before dividing by the power
+            // decimator. For example, 250000/32 is 7812.5, not 7813: the exact
+            // 16/25 ratio needs 1900 taps instead of 593750, without rate drift.
+            // Keep the existing approximation for unusual fractional clocks or
+            // when an exact ratio would require a larger filter bank.
+            const auto inHz = std::llround(_inSamplerate);
+            const auto outHz = std::llround(_outSamplerate);
+            if (inHz > 0 && outHz > 0 &&
+                std::abs(_inSamplerate - inHz) < 1e-6 &&
+                std::abs(_outSamplerate - outHz) < 1e-6) {
+                const auto rateGcd = std::gcd(inHz, outHz);
+                const auto source = inHz / rateGcd;
+                const auto factor = useDecim ? predecRatio : 1;
+                const auto factorGcd = std::gcd(source, static_cast<long long>(factor));
+                const auto exactDecim = source / factorGcd;
+                const auto exactInterp = (outHz / rateGcd) * (factor / factorGcd);
+                if (exactInterp <= interp && exactDecim <= INT_MAX) {
+                    interp = static_cast<int>(exactInterp);
+                    decim = static_cast<int>(exactDecim);
+                }
+            }
+
             // Check for excessive error
-            double actualOutSR = (double)IntSR * (double)interp / (double)decim;
+            double actualOutSR = intSamplerate * (double)interp / (double)decim;
             double error = abs((actualOutSR - _outSamplerate) / _outSamplerate) * 100.0;
             if (error > 0.01) {
                 fprintf(stderr, "Warning: resampling error is over 0.01%%: %lf\n", error);

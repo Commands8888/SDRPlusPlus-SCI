@@ -14,6 +14,8 @@
 #include <fstream>
 #include <thread>
 #include <vector>
+#include <ctime>
+#include <sys/resource.h>
 #include <unistd.h>
 
 SDRPP_MOD_INFO{"mode_integration", "Radio mode integration test", "SDRPP-FULL tests", 1, 0, 0, 1};
@@ -46,7 +48,13 @@ public:
                 for (int to : ids)
                     if (from != to) { sequence.push_back(from); sequence.push_back(to); }
     }
-    ~ModeIntegration() { stopIQ(); }
+    ~ModeIntegration() {
+        if (worker.joinable()) fail("core did not stop the active source before deleting it");
+        detach();
+        sigpath::sourceManager.unregisterSource("Mode test IQ");
+        sigpath::sinkManager.unregisterSinkProvider("Mode test sink");
+        std::puts("OK: active source stopped before controller teardown");
+    }
     void postInit() override {}
     void enable() override {}
     void disable() override {}
@@ -109,6 +117,8 @@ private:
             }, this);
             audio.start();
             gui::mainWindow.setPlayState(true);
+            startedAt = std::chrono::steady_clock::now();
+            cpuAtStart = std::clock();
             started = true;
         }
         // Let the actual UI/status drawing and DSP pipeline run between changes.
@@ -123,11 +133,15 @@ private:
             std::sort(latencies.begin(), latencies.end());
             std::printf("OK: GUI RadioModule all 110 directed pairs twice; %zu switches; %d audio buffers; p95=%lld us max=%lld us; RSS warm=%ld KB final=%ld KB\n",
                 position, audioBuffers.load(), latencies[latencies.size() * 95 / 100], latencies.back(), warmRSS, rssKB());
+            rusage usage{};
+            getrusage(RUSAGE_SELF, &usage);
+            const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now()-startedAt).count();
+            const double cpu = double(std::clock()-cpuAtStart)/CLOCKS_PER_SEC;
+            std::printf("OK: GUI workload wall=%.3f s process CPU=%.3f s (%.1f%% of one core); peak RSS=%ld KB\n",wall,cpu,100.0*cpu/wall,usage.ru_maxrss);
             std::fflush(stdout);
             finished = true;
-            stopAudio();
-            gui::mainWindow.setPlayState(false);
-            if (core::moduleManager.deleteInstance("Radio") != 0) fail("Radio instance teardown failed");
+            // Leave source, audio and Radio alive: normal application shutdown
+            // must stop/join them in the correct order, rather than the test.
             glfwSetWindowShouldClose(glfwGetCurrentContext(), GLFW_TRUE);
             return;
         }
@@ -163,9 +177,14 @@ private:
     int waitFrames = 0;
     long warmRSS = 0;
     bool started = false, finished = false;
+    std::chrono::steady_clock::time_point startedAt;
+    std::clock_t cpuAtStart = 0;
 };
 static ModeIntegration* controller = nullptr;
 MOD_EXPORT void _INIT_() {}
 MOD_EXPORT ModuleManager::Instance* _CREATE_INSTANCE_(std::string) { controller = new ModeIntegration; return controller; }
 MOD_EXPORT void _DELETE_INSTANCE_(ModuleManager::Instance* instance) { delete instance; controller = nullptr; }
-MOD_EXPORT void _END_() { if (controller) controller->detach(); }
+MOD_EXPORT void _END_() {
+    if (controller) { std::fputs("MODE TEST FAILED: live instance at module shutdown\n",stderr); std::abort(); }
+    std::puts("OK: GUI Radio and controller instances destroyed before module shutdown");
+}

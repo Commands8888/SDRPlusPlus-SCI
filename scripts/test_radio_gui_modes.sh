@@ -37,6 +37,9 @@ if [ "$status" -ne 0 ] || ! grep -qF 'OK: GUI RadioModule all 110 directed pairs
     exit 1
 fi
 grep -F 'OK: GUI RadioModule' "$tmp/gui.log"
+grep -F 'OK: GUI workload' "$tmp/gui.log"
+grep -F 'OK: active source stopped before controller teardown' "$tmp/gui.log"
+grep -F 'OK: GUI Radio and controller instances destroyed' "$tmp/gui.log"
 # Existing CW controls must survive the full round trip through every mode.
 python3 - "$tmp/config/radio_config.json" <<'PY'
 import json,sys

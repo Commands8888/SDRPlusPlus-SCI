@@ -15,6 +15,7 @@
 #include <thread>
 #include <vector>
 #include <ctime>
+#include <cstdlib>
 #include <sys/resource.h>
 #include <unistd.h>
 
@@ -43,7 +44,8 @@ public:
         frames.ctx = this;
         gui::mainWindow.onFrameDraw.bindHandler(&frames);
         const int ids[] = {0, 1, 2, 3, 7, 6, 4, 5, 8, 0x1301, 0x1302};
-        for (int round = 0; round < 4; ++round)
+        nrTest = std::getenv("SDRPP_TEST_NR") != nullptr;
+        for (int round = 0; round < (nrTest ? 1 : 4); ++round)
             for (int from : ids)
                 for (int to : ids)
                     if (from != to) { sequence.push_back(from); sequence.push_back(to); }
@@ -105,6 +107,16 @@ private:
         if (finished) return;
         if (!started) {
             if (!core::modComManager.interfaceExists("Radio")) fail("Radio interface missing");
+            if (nrTest) {
+                auto* nr = core::moduleManager.instances.at("Noise Reduction").instance;
+                nr->disable(); nr->enable();
+                for (int i = 0; i < 2; ++i) {
+                    if (core::moduleManager.createInstance("Temporary radio", "radio") != 0) fail("temporary radio creation failed");
+                    core::moduleManager.postInit("Temporary radio");
+                    if (core::moduleManager.deleteInstance("Temporary radio") != 0) fail("temporary radio removal failed");
+                }
+                std::puts("OK: NR detached from deleted radios and attached again to reused names");
+            }
             sigpath::sinkManager.setStreamSink("Radio", "Mode test sink");
             if (!audioStream) fail("test sink missing");
             audioInput = sigpath::sinkManager.bindStream("Radio");
@@ -131,8 +143,8 @@ private:
         if (position == sequence.size()) {
             if (!audioBuffers.load()) fail("Radio produced no audio buffers");
             std::sort(latencies.begin(), latencies.end());
-            std::printf("OK: GUI RadioModule all 110 directed pairs four times; %zu switches; %d audio buffers; p95=%lld us max=%lld us; RSS warm=%ld KB final=%ld KB\n",
-                position, audioBuffers.load(), latencies[latencies.size() * 95 / 100], latencies.back(), warmRSS, rssKB());
+            std::printf("OK: GUI RadioModule all 110 directed pairs %s; %zu switches; %d audio buffers; p95=%lld us max=%lld us; RSS warm=%ld KB final=%ld KB\n",
+                nrTest ? "with Noise Reduction" : "four times", position, audioBuffers.load(), latencies[latencies.size() * 95 / 100], latencies.back(), warmRSS, rssKB());
             rusage usage{};
             getrusage(RUSAGE_SELF, &usage);
             const double wall = std::chrono::duration<double>(std::chrono::steady_clock::now()-startedAt).count();
@@ -144,6 +156,10 @@ private:
             // must stop/join them in the correct order, rather than the test.
             glfwSetWindowShouldClose(glfwGetCurrentContext(), GLFW_TRUE);
             return;
+        }
+        if (nrTest && position && position % 44 == 0) {
+            auto* nr = core::moduleManager.instances.at("Noise Reduction").instance;
+            nr->disable(); nr->enable();
         }
         int mode = sequence[position];
         auto begin = std::chrono::steady_clock::now();
@@ -177,6 +193,7 @@ private:
     int waitFrames = 0;
     long warmRSS = 0;
     bool started = false, finished = false;
+    bool nrTest = false;
     std::chrono::steady_clock::time_point startedAt;
     std::clock_t cpuAtStart = 0;
 };

@@ -21,35 +21,65 @@ constexpr int kGh1Bins = 7000;
 constexpr int kExpectedGValueEntries = kPpBins * kGh1Bins;
 constexpr double kGainMin = 0.003;
 
-std::vector<int> build_g_value_table()
+const std::vector<int>& shared_g_value_table()
 {
-	static_assert(sizeof(int) == sizeof(std::int32_t), "OMLSA gain table requires 32-bit int storage");
+	static const std::vector<int> table = []()
+	{
+		static_assert(sizeof(int) == sizeof(std::int32_t), "OMLSA gain table requires 32-bit int storage");
 
-	std::vector<int> table(kExpectedGValueEntries);
-	for (int gh1_bin = 0; gh1_bin < kGh1Bins; ++gh1_bin) {
-		const double gh1 = static_cast<double>(gh1_bin + 1) / 100.0;
-		const double step = std::exp(0.01 * std::log(gh1 / kGainMin));
+		std::vector<int> table(kExpectedGValueEntries);
+		for (int gh1_bin = 0; gh1_bin < kGh1Bins; ++gh1_bin) {
+			const double gh1 = static_cast<double>(gh1_bin + 1) / 100.0;
+			const double step = std::exp(0.01 * std::log(gh1 / kGainMin));
 
-		// Keep the recurrence in double precision. Float produced tens of
-		// thousands of Q14 rounding mismatches across the full table, while
-		// double remained bit-identical to the direct exp/log formula.
-		double gain = kGainMin;
-		for (int pp_bin = 0; pp_bin < kPpBins; ++pp_bin) {
-			gain *= step;
-			const double scaled_gain = std::round(kGainQ14 * gain);
-			const int index = pp_bin * kGh1Bins + gh1_bin;
-			table[index] = static_cast<int>(std::clamp(
-				scaled_gain,
-				0.0,
-				static_cast<double>(std::numeric_limits<int>::max())));
+			// Keep the recurrence in double precision. Float produced tens of
+			// thousands of Q14 rounding mismatches across the full table, while
+			// double remained bit-identical to the direct exp/log formula.
+			double gain = kGainMin;
+			for (int pp_bin = 0; pp_bin < kPpBins; ++pp_bin) {
+				gain *= step;
+				const double scaled_gain = std::round(kGainQ14 * gain);
+				const int index = pp_bin * kGh1Bins + gh1_bin;
+				table[index] = static_cast<int>(std::clamp(
+					scaled_gain,
+					0.0,
+					static_cast<double>(std::numeric_limits<int>::max())));
+			}
 		}
-	}
+		return table;
+	}();
 	return table;
 }
 }
 
 G_calculate::G_calculate()
 {
+	m_arr_temp = nullptr;
+	m_abs_Y = nullptr;
+	m_init_S = nullptr;
+	m_Gh1 = nullptr;
+	m_q = nullptr;
+	m_pp = nullptr;
+	m_G = nullptr;
+	m_M = nullptr;
+	m_cosen_local = nullptr;
+	m_cosen_global = nullptr;
+	m_plocal = nullptr;
+	m_pglobal = nullptr;
+	m_h_global = nullptr;
+	m_old_cosen = nullptr;
+	m_cosen = nullptr;
+	m_lamda_d = nullptr;
+	m_integra = nullptr;
+	m_init_S_min = nullptr;
+	m_init_S_tmp = nullptr;
+	m_init_p1 = nullptr;
+	m_EN_cos = nullptr;
+	m_EN_sin = nullptr;
+	m_post_SNR = nullptr;
+	m_pr_SNR = nullptr;
+	m_E_pr_SNR = nullptr;
+	m_v = nullptr;
 }
 short G_calculate::Initialize(int wlen) {
 	m_lwlen = wlen ;
@@ -183,7 +213,7 @@ short G_calculate::Initialize(int wlen) {
 	memset(m_old_cosen, 0, sizeof(int)*m_lwlen);
 	memset(m_cosen, 0, sizeof(int)*m_lwlen);
 
-	m_G_value = build_g_value_table();
+	m_G_value = shared_g_value_table().data();
 	return 0;
 }
 
@@ -303,7 +333,7 @@ void G_calculate::SpeechAbsenceEstm()
 		m_q[k] = m_num_mag_pow - ((__int64)m_plocal[k] * m_pglobal[k] * p_frame >> 28);//10000
 		m_q[k] = min<int>(m_q[k], 0.95*m_num_mag_pow);
 		m_old_cosen[k] = m_cosen[k];
-		m_old_cosen[m_lwlen - k] = m_old_cosen[k];
+		if (k != 0) { m_old_cosen[m_lwlen - k] = m_old_cosen[k]; }
 	}
 }
 short G_calculate::G_calculate_process(Complex_num* winData, int blockInd) {  // -49
@@ -320,7 +350,7 @@ short G_calculate::G_calculate_process(Complex_num* winData, int blockInd) {  //
 		m_post_SNR[i] = min<int>((__int64)pow((((__int64)m_abs_Y[i] * m_num_mag_pow) / (1 > m_lamda_d[i] ? 1 : m_lamda_d[i])), 2) >> m_amp_para_double, 4096 << 14);
 		post_temp = max<int>(m_post_SNR[i] - m_num_mag_pow, 0);
 		m_E_pr_SNR[i] = min<int>(max<int>((m_pr_SNR[i] >> 1) + (m_pr_SNR[i] >> 2) + (m_pr_SNR[i] >> 3) + (post_temp >> 3), m_snpramin), 4096 << m_amp_para_double);
-		m_E_pr_SNR[m_lwlen - i] = m_E_pr_SNR[i];                                                // 0.0001 * (2^24=16777216) =1678  167772 
+		if (i != 0) { m_E_pr_SNR[m_lwlen - i] = m_E_pr_SNR[i]; }
 		m_v[i] = max<__int64>(min<__int64>((__int64)((__int64)m_E_pr_SNR[i] * m_post_SNR[i] << 10) / (m_num_mag_pow + m_E_pr_SNR[i]), 15 << 24), 1678);
 		m_integra[i] = expintpow_solution(m_v[i]);  // return value in Q14, = exp(expint(v)/2)
 		m_Gh1[i] = min<int>((__int64)m_E_pr_SNR[i] * m_integra[i] / (m_num_mag_pow + m_E_pr_SNR[i]), 70 << 14);
@@ -340,8 +370,12 @@ short G_calculate::G_calculate_process(Complex_num* winData, int blockInd) {  //
 		winData[i].real = ((__int64)m_M[i] * m_EN_cos[i]) >> 12; 
 		winData[i].imag = ((__int64)m_M[i] * m_EN_sin[i]) >> 12;
 		m_pr_SNR[i] = min<int>(pow((__int64)m_M[i] * m_num_mag / (1 > m_lamda_d[i] ? 1 : m_lamda_d[i]), 2), 4096 << m_amp_para_double);  // 10000
-		winData[m_lwlen - i].real = winData[i].real;
-		winData[m_lwlen - i].imag = -winData[i].imag;
+		// DC is its own conjugate. Mirroring index 0 to N writes past
+		// this FFT and corrupts the next packed audio frame.
+		if (i != 0) {
+			winData[m_lwlen - i].real = winData[i].real;
+			winData[m_lwlen - i].imag = -winData[i].imag;
+		}
 	}
 	
 	return 0;
@@ -350,107 +384,30 @@ short G_calculate::G_calculate_process(Complex_num* winData, int blockInd) {  //
 
 G_calculate::~G_calculate()
 {
-	if (!m_arr_temp) {
-		delete[] m_arr_temp;
-		m_arr_temp = NULL;
-	}
-	if (!m_abs_Y) {
-		delete[] m_abs_Y;
-		m_abs_Y = NULL;
-	}
-	if (!m_init_S) {
-		delete[] m_init_S;
-		m_init_S = NULL;
-	}
-	if (!m_init_S_min) {
-		delete[] m_init_S_min;
-		m_init_S_min = NULL;
-	}
-	if (!m_init_S_tmp) {
-		delete[] m_init_S_tmp;
-		m_init_S_tmp = NULL;
-	}
-	if (!m_init_p1) {
-		delete[] m_init_p1;
-		m_init_p1 = NULL;
-	}
-	if (!m_EN_cos) {
-		delete[] m_EN_cos;
-		m_EN_cos = NULL;
-	}
-	if (!m_EN_sin) {
-		delete[] m_EN_sin;
-		m_EN_sin = NULL;
-	}
-	if (!m_post_SNR) {
-		delete[] m_post_SNR;
-		m_post_SNR = NULL;
-	}
-	if (!m_pr_SNR) {
-		delete[] m_pr_SNR;
-		m_pr_SNR = NULL;
-	}
-	if (!m_E_pr_SNR) {
-		delete[] m_E_pr_SNR;
-		m_E_pr_SNR = NULL;
-	}
-	if (!m_v) {
-		delete[] m_v;
-		m_v = NULL;
-	}
-	if (!m_Gh1) {
-		delete[] m_Gh1;
-		m_Gh1 = NULL;
-	}
-	if (!m_q) {
-		delete[] m_q;
-		m_q = NULL;
-	}
-	if (!m_pp) {
-		delete[] m_pp;
-		m_pp = NULL;
-	}
-
-	if (!m_G) {
-		delete[] m_G;
-		m_G = NULL;
-	}
-
-	if (!m_M) {
-		delete[] m_M;
-		m_M = NULL;
-	}
-
-	if (!m_cosen_local) {
-		delete[] m_cosen_local;
-		m_cosen_local = NULL;
-	}
-	if (!m_cosen_global) {
-		delete[] m_cosen_global;
-		m_cosen_global = NULL;
-	}
-	if (!m_plocal) {
-		delete[] m_plocal;
-		m_plocal = NULL;
-	}
-	if (!m_pglobal) {
-		delete[] m_pglobal;
-		m_pglobal = NULL;
-	}
-	if (!m_h_global) {
-		delete[] m_h_global;
-		m_h_global = NULL;
-	}
-	if (!m_cosen) {
-		delete[] m_cosen;
-		m_cosen = NULL;
-	}
-	if (!m_old_cosen) {
-		delete[] m_old_cosen;
-		m_old_cosen = NULL;
-	}
-	if (!m_lamda_d) {
-		delete[] m_lamda_d;
-		m_lamda_d = NULL;
-	}
+	delete[] m_arr_temp;
+	delete[] m_abs_Y;
+	delete[] m_init_S;
+	delete[] m_Gh1;
+	delete[] m_q;
+	delete[] m_pp;
+	delete[] m_G;
+	delete[] m_M;
+	delete[] m_cosen_local;
+	delete[] m_cosen_global;
+	delete[] m_plocal;
+	delete[] m_pglobal;
+	delete[] m_h_global;
+	delete[] m_old_cosen;
+	delete[] m_cosen;
+	delete[] m_lamda_d;
+	delete[] m_integra;
+	delete[] m_init_S_min;
+	delete[] m_init_S_tmp;
+	delete[] m_init_p1;
+	delete[] m_EN_cos;
+	delete[] m_EN_sin;
+	delete[] m_post_SNR;
+	delete[] m_pr_SNR;
+	delete[] m_E_pr_SNR;
+	delete[] m_v;
 }

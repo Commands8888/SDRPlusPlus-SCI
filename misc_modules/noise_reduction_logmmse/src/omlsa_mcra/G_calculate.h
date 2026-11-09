@@ -36,7 +36,7 @@ private:
 	int* m_plocal, *m_pglobal;
 
 	unsigned int* m_abs_Y, *m_M;
-	std::vector<int> m_G_value;
+	const int* m_G_value = nullptr; // immutable table shared across instances
 	int* m_lamda_d;
 
 	void NoiseEstimation(int blockInd);

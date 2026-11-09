@@ -47,8 +47,6 @@ public:
         ifnrProcessor.setDisableCpuDeactivation(disableCpuDeactivation);
 
         gui::menu.registerEntry(name, menuHandler, this, this);
-        updateBindings();
-        actuateIFNR();
     }
 
     ~NRModule() {
@@ -56,7 +54,14 @@ public:
         gui::menu.removeEntry(name);
     }
 
-    void postInit() {}
+    void postInit() {
+        if (ready) { return; }
+        // All configured module instances (including disabled radios) now
+        // exist. Attach once, without starting work during construction.
+        ready = true;
+        updateBindings();
+        actuateIFNR();
+    }
 
     void enable() {
         if (!enabled) {
@@ -83,8 +88,11 @@ public:
 private:
     bool ifnr = false;
     bool disableCpuDeactivation = false;
+    bool ready = false;
+    bool bindings = false;
 
     void attachAFToRadio(const std::string& instanceName) {
+        if (afnrProcessors2.count(instanceName)) { return; }
         const std::shared_ptr<dsp::AFNR_OMLSA_MCRA> afnromlsa = std::make_shared<dsp::AFNR_OMLSA_MCRA>();
         afnromlsa->init(nullptr);
         afnrProcessors2[instanceName] = afnromlsa;
@@ -113,8 +121,9 @@ private:
     }
 
     void updateBindings() {
+        if (!ready || enabled == bindings) { return; }
         if (enabled) {
-            flog::info("Enabling noise reduction things");
+            flog::info("Attaching noise reduction processors");
 
             sigpath::iqFrontEnd.addPreprocessor(&ifnrProcessor, false);
 
@@ -139,9 +148,17 @@ private:
                 }
             };
             core::moduleManager.onInstanceCreated.bindHandler(&instanceCreatedHandler);
+            instanceDeleteHandler.ctx = this;
+            instanceDeleteHandler.handler = [](std::string name, void* ctx) {
+                // Called before the radio's interface/chain is destroyed.
+                ((NRModule*)ctx)->detachAFFromRadio(name);
+            };
+            core::moduleManager.onInstanceDelete.bindHandler(&instanceDeleteHandler);
+            bindings = true;
         }
         else {
             core::moduleManager.onInstanceCreated.unbindHandler(&instanceCreatedHandler);
+            core::moduleManager.onInstanceDelete.unbindHandler(&instanceDeleteHandler);
             sigpath::sourceManager.onRetune.unbindHandler(&currentFrequencyChangedHandler);
 
             // Detach OMLSA processors from the radios' AF chains. Without this,
@@ -152,10 +169,12 @@ private:
             for (auto& k : attached) { detachAFFromRadio(k); }
 
             sigpath::iqFrontEnd.removePreprocessor(&ifnrProcessor);
+            bindings = false;
         }
     }
 
     void actuateIFNR() {
+        if (!ready) { return; }
         bool shouldRun = enabled && ifnr;
         if (ifnrProcessor.bypass != !shouldRun) {
             ifnrProcessor.bypass = !shouldRun;
@@ -197,11 +216,12 @@ private:
         }
         else {
             // show cpu usage
-            if (ifnrProcessor.percentUsage >= 0) {
-                if (ifnrProcessor.percentUsage > 80) {
+            int percentUsage = ifnrProcessor.percentUsage.load(std::memory_order_relaxed);
+            if (percentUsage >= 0) {
+                if (percentUsage > 80) {
                     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0, 0, 1.0f));
                 }
-                std::string cpuText = std::to_string((int)ifnrProcessor.percentUsage) + "% cpu";
+                std::string cpuText = std::to_string(percentUsage) + "% cpu";
                 ImVec2 textSize = ImGui::CalcTextSize(cpuText.c_str());
                 std::string cpuLabel = cpuText + "##_sdrpp_ifnr_cpu_load";
                 bool clicked = ImGui::Selectable(cpuLabel.c_str(), false, ImGuiSelectableFlags_None, textSize);
@@ -223,7 +243,7 @@ private:
                     ImVec2 max = ImGui::GetItemRectMax();
                     drawList->AddLine(ImVec2(min.x, (min.y + max.y) / 2), ImVec2(max.x, (min.y + max.y) / 2), ImGui::GetColorU32(ImGuiCol_Text), 1.0f);
                 }
-                if (ifnrProcessor.percentUsage > 80) {
+                if (percentUsage > 80) {
                     ImGui::PopStyleColor(1);
                 }
             }
@@ -232,22 +252,24 @@ private:
         for (auto& [k, v] : afnrProcessors2) {
             // Track the sink's audio rate (cheap; applied by the DSP thread only on change)
             v->setAudioSampleRate((int)sigpath::sinkManager.getStreamSampleRate(k));
-            if (ImGui::Checkbox(("Audio NR (OMLSA) " + k + "##_radio_omlsa_nr_" + k).c_str(), &v->allowed)) {
-                core::modComManager.callInterface(k, v->allowed ? RADIO_IFACE_CMD_ENABLE_IN_AFCHAIN : RADIO_IFACE_CMD_DISABLE_IN_AFCHAIN, v.get(), NULL);
+            bool allowed = v->allowed.load(std::memory_order_relaxed);
+            if (ImGui::Checkbox(("Audio NR (OMLSA) " + k + "##_radio_omlsa_nr_" + k).c_str(), &allowed)) {
+                v->allowed.store(allowed, std::memory_order_relaxed);
+                core::modComManager.callInterface(k, allowed ? RADIO_IFACE_CMD_ENABLE_IN_AFCHAIN : RADIO_IFACE_CMD_DISABLE_IN_AFCHAIN, v.get(), NULL);
                 // Disabling joins the block's worker thread, so the buffer can
                 // be cleared here; otherwise stale audio would flush on re-enable.
-                if (!v->allowed) { v->buffer.clear(); }
+                if (!allowed) { v->buffer.clear(); }
                 config.acquire();
-                config.conf["AF_NR2_" + k] = v->allowed;
+                config.conf["AF_NR2_" + k] = allowed;
                 config.release(true);
             }
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("OMLSA-MCRA speech denoiser on this radio's audio output.\n"
                                   "Best on SSB/AM voice; degrades digital modes and music.\n"
-                                  "Output is mono. Adds roughly one block (~32 ms) of latency.");
+                                  "Output is mono. Buffers about 96 ms at 48 kHz.");
             }
             ImGui::SameLine();
-            ImGui::Text("%0.01f", 32767.0 / v->scaled);
+            ImGui::Text("%0.01f", 32767.0 / v->scaled.load(std::memory_order_relaxed));
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("Recent peak audio level into the denoiser (1.0 = full scale).\n"
                                   "The NR processes in 16-bit fixed point and auto-scales to\n"
@@ -267,6 +289,7 @@ private:
     bool enabled = true;
     EventHandler<double> currentFrequencyChangedHandler;
     EventHandler<std::string> instanceCreatedHandler;
+    EventHandler<std::string> instanceDeleteHandler;
 };
 
 

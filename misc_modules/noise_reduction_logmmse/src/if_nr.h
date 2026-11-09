@@ -24,6 +24,10 @@ namespace dsp {
         using base_type = Processor<complex_t, complex_t>;
 
     public:
+        ~IFNRLogMMSE() override {
+            if (_block_init) { stop(); }
+        }
+
         void setInput(stream<complex_t>* in) override {
             if (!_block_init) {
                 init(in);
@@ -39,15 +43,30 @@ namespace dsp {
         LogMMSE::SavedParamsC params;
 
         void doStart() override {
+            reset();
+            lastReport = currentTimeMillis();
+            cpuUsed = 0;
+            prevPercentUsage = 0;
+            percentUsage = 0;
+            txHandler.ctx = this;
+            txHandler.handler = [](bool active, void* ctx) {
+                ((IFNRLogMMSE*)ctx)->txActive.store(active, std::memory_order_relaxed);
+            };
+            sigpath::txState.bindHandler(&txHandler);
             base_type::doStart();
-            shouldReset = true;
+        }
+
+        void doStop() override {
+            base_type::doStop();
+            sigpath::txState.unbindHandler(&txHandler);
+            percentUsage = -1;
         }
 
         void setDisableCpuDeactivation(bool disable) {
             disableCpuDeactivation = disable;
         }
 
-        bool shouldReset = true;
+        std::atomic<bool> shouldReset { true };
         void reset() {
             shouldReset = true;
         }
@@ -56,18 +75,17 @@ namespace dsp {
             // Detect sample rate / decimation changes: the noise profile is
             // only valid for the rate it was sampled at.
             int curFreq = (int)sigpath::iqFrontEnd.getSampleRate();
-            if (curFreq != freq) { shouldReset = true; }
-            if (shouldReset) {
+            if (shouldReset.exchange(false, std::memory_order_relaxed) || curFreq != freq) {
                 flog::debug("Resetting IF NR LogMMSE");
-                shouldReset = false;
                 worker1c.clear();
                 params.reset();
                 freq = curFreq;
             }
+            params.hold = txActive.load(std::memory_order_relaxed);
             worker1c.insert(worker1c.end(), in, in + count);
             int noiseFrames = 12;
             int fram = freq / 100;
-            int initialDemand = fram * 2;
+            int initialDemand = params.Xk_prev.empty() ? 0 : params.Slen + params.len2;
             if (params.Xk_prev.empty()) {
                 initialDemand = fram * (noiseFrames + 2) * 2;
             }
@@ -98,7 +116,7 @@ namespace dsp {
 
         long long lastReport = currentTimeMillis();
         long long cpuUsed = 0;
-        int percentUsage = 0;
+        std::atomic<int> percentUsage { -1 };
         int prevPercentUsage = 0;
 
         int runMMSE(stream<complex_t>* _in, stream<complex_t>& out) {
@@ -109,7 +127,7 @@ namespace dsp {
             process(_in->readBuf, count, out.writeBuf, outCount);
             long long ctm = currentTimeMillis();
             _in->flush();
-            if (!out.swap(outCount)) {
+            if (outCount && !out.swap(outCount)) {
                 return -1;
             }
             cpuUsed += ctm - ctm0;
@@ -131,26 +149,12 @@ namespace dsp {
             return runMMSE(_in, out);
         }
 
-        void start() override {
-            txHandler.ctx = this;
-            txHandler.handler = [](bool txActive, void* ctx) {
-                auto _this = (IFNRLogMMSE*)ctx;
-                _this->params.hold = txActive;
-            };
-            sigpath::txState.bindHandler(&txHandler);
-            block::start();
-        }
-        void stop() override {
-            percentUsage = -1;
-            block::stop();
-            sigpath::txState.unbindHandler(&txHandler);
-        }
-
         bool bypass = true;
         // Written by the DSP thread, read by the UI thread every frame; points
         // to a string literal (or nullptr) so the load is a single atomic read.
         std::atomic<const char*> stopReason { nullptr };
-        bool disableCpuDeactivation = false;
+        std::atomic<bool> disableCpuDeactivation { false };
+        std::atomic<bool> txActive { false };
         EventHandler<bool> txHandler;
     };
 

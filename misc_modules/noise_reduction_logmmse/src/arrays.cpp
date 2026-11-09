@@ -401,6 +401,17 @@ namespace dsp {
                 return output;
             }
 
+            const ComplexArray& transformWeighted(const complex_t* in, const float* weights, size_t count) override {
+                auto limit = std::min(count, (size_t)nbuckets);
+                volk_32fc_32f_multiply_32fc((lv_32fc_t*)input.data(), (const lv_32fc_t*)in, weights, limit);
+                std::fill(input.begin() + limit, input.end(), dsp::complex_t{ 0, 0 });
+                fftwf_execute(p);
+                if (reverse) {
+                    volk_32fc_s32fc_multiply_32fc((lv_32fc_t*)output.data(), (lv_32fc_t*)output.data(), lv_32fc_t(1.0f / nbuckets, 0.0f), output.size());
+                }
+                return output;
+            }
+
             virtual ~fftwPlanImplFFTW() {
                 fftwf_destroy_plan(p);
             }

@@ -140,6 +140,9 @@ namespace dsp {
             // size) and returns the plan's internal output buffer; the
             // reference stays valid but is overwritten by the next call.
             virtual const ComplexArray& npfftfft(const ComplexArray& in) = 0;
+            // Multiply directly into the fixed FFT input, avoiding a slice,
+            // temporary complex vector and copy for each analysis frame.
+            virtual const ComplexArray& transformWeighted(const complex_t* in, const float* weights, size_t count) = 0;
             virtual const ComplexArray& getOutput() = 0;
             virtual ~FFTPlan() {
 

@@ -48,6 +48,9 @@ namespace dsp {
                 float aa = 0.98;
                 float ksi_min;
                 bool hold = false;
+                // Reused per-bin working storage; history still retains the
+                // same number of complete, full-bandwidth FFT frames.
+                FloatArray gain, integral, weight;
 
                 void reset() {
                     noise_history.clear();
@@ -79,10 +82,12 @@ namespace dsp {
                         noise_history.pop_front();
                     }
 
-                    auto noiseAvg = div(sums, (float)noise_history.size());
-
-                    auto diff = subeach(latest, noiseAvg);
-                    diff = muleach(diff, diff);
+                    FloatArray diff(nFFT);
+                    const float scale = 1.0f / noise_history.size();
+                    for (int i = 0; i < nFFT; ++i) {
+                        float delta = latest[i] - sums[i] * scale;
+                        diff[i] = delta * delta;
+                    }
 
                     volk_32f_x2_add_32f(devs.data(), devs.data(), diff.data(), nFFT);
                     dev_history.emplace_back(std::move(diff));
@@ -146,11 +151,14 @@ namespace dsp {
                 params->reversePlan = allocateFFTWPlan(true, params->nFFT);
                 params->sums = npzeros(params->nFFT);
                 params->devs = npzeros(params->nFFT);
+                params->gain.resize(params->nFFT);
+                params->integral.resize(params->nFFT);
+                params->weight.resize(params->nFFT);
 
                 flog::debug("logmmse: sampling noise, srate={}, Slen={}, nFFT={}", Srate, params->Slen, params->nFFT);
                 auto noise_mean = npzeros(params->nFFT);
                 for (int j = 0; j < params->Slen * noise_frames; j += params->Slen) {
-                    npfftfft((muleach(params->win, nparange(x, j, j + params->Slen))), params->forwardPlan);
+                    params->forwardPlan->transformWeighted(x.data() + j, params->win.data(), params->Slen);
                     auto noise = npabsolute(params->forwardPlan->getOutput());
                     noise_mean = addeach(noise_mean, noise);
                     params->add_noise_history(std::move(noise));
@@ -158,6 +166,9 @@ namespace dsp {
                 params->noise_mu2 = div(noise_mean, noise_frames);
                 params->noise_mu2 = npmavg(params->noise_mu2, 120);
                 params->noise_mu2 = muleach(params->noise_mu2, params->noise_mu2);
+                // A silent source has exactly zero estimated noise power;
+                // keep the estimator finite instead of feeding 0/0 into it.
+                for (auto& power : params->noise_mu2) { power = std::max(power, 1.0e-20f); }
                 params->Xk_prev = npzeros(params->len1);
                 params->x_old = npzeros_c(params->len1);
                 params->ksi_min = ::pow(10, -25.0 / 10.0);
@@ -171,11 +182,11 @@ namespace dsp {
                     inputLen = maxInput;
                 }
                 auto Nframes = floor(inputLen / params->len2) - floor(params->Slen / params->len2);
+                if (Nframes <= 0) { return {}; }
                 params->update_noise_mu2();
                 auto xfinal = npzeros_c(Nframes * params->len2);
                 for (int k = 0; k < Nframes * params->len2; k += params->len2) {
-                    auto insign = muleach(params->win, nparange(x, k, k + params->Slen));
-                    npfftfft(insign, params->forwardPlan);
+                    params->forwardPlan->transformWeighted(x.data() + k, params->win.data(), params->Slen);
                     const auto& spec = params->forwardPlan->getOutput();
                     auto sig = npabsolute(spec);
                     auto sigD = sig.data();
@@ -184,36 +195,47 @@ namespace dsp {
                             sigD[z] = sigD[z - 1];      // for some reason fft returns 0 instead if small value
                         }
                     }
-                    auto sig2 = muleach(sig, sig);
-
-                    auto gammak = npminimum(diveach(sig2, params->noise_mu2), 40);
-                    FloatArray ksi;
-                    if (!npall(params->Xk_prev)) {
-                        ksi = add(mul(npmaximum(add(gammak, -1), 0), 1 - params->aa), params->aa);
-                    } else {
-                        const FloatArray d1 = diveach(mul(params->Xk_prev, params->aa), params->noise_mu2);
-                        const FloatArray m1 = mul(npmaximum(add(gammak, -1), 0), (1 - params->aa));
-                        ksi = addeach(d1, m1);
-                        ksi = npmaximum(std::move(ksi), params->ksi_min);
+                    const bool usePrevious = npall(params->Xk_prev);
+                    // Same decision-directed estimator, bounds, E1 table and
+                    // expfast kernel. Fuse temporary-vector arithmetic into
+                    // one pass, keeping the original float operation order.
+                    for (int i = 0; i < params->nFFT; ++i) {
+                        float gamma = (sigD[i] * sigD[i]) / params->noise_mu2[i];
+                        if (gamma > 40.0f) { gamma = 40.0f; }
+                        float excess = gamma - 1.0f;
+                        if (excess < 0.0f) { excess = 0.0f; }
+                        float ksi = excess * (1.0f - params->aa);
+                        if (usePrevious) {
+                            ksi += (params->Xk_prev[i] * params->aa) / params->noise_mu2[i];
+                            if (ksi < params->ksi_min) { ksi = params->ksi_min; }
+                        }
+                        else { ksi += params->aa; }
+                        float a = ksi / (ksi + 1.0f);
+                        params->gain[i] = a;
+                        params->integral[i] = a * gamma;
                     }
-                    auto A = diveach(ksi, add(ksi, 1));
-                    auto vk = muleach(A, gammak);
-                    auto ei_vk = mul(scipyspecialexpn(vk), 0.5);
-                    auto hw = muleach(A, npexp(ei_vk));
-                    auto sigHw = muleach(sig, hw);
-                    params->Xk_prev = muleach(sigHw, sigHw);
+                    // Keep the scalar E1 lookup separate so the estimator
+                    // arithmetic above can be vectorized by the compiler.
+                    for (int i = 0; i < params->nFFT; ++i) {
+                        params->integral[i] = dsp::math::expn(params->integral[i]) * 0.5f;
+                    }
+                    volk_32f_expfast_32f(params->weight.data(), params->integral.data(), params->nFFT);
+                    volk_32f_x2_multiply_32f(params->weight.data(), params->gain.data(), params->weight.data(), params->nFFT);
+                    params->Xk_prev.resize(params->nFFT);
+                    for (int i = 0; i < params->nFFT; ++i) {
+                        float value = sigD[i] * params->weight[i];
+                        params->Xk_prev[i] = value * value;
+                    }
                     // Deferred from right after the hole-filling loop: this is
                     // past sig's last read, so the history can adopt the
                     // buffer instead of copying it. The intervening math does
                     // not touch sums/devs/noise_history, so the ordering is
                     // equivalent.
                     params->add_noise_history(std::move(sig));
-                    auto hwmulspec = muleach(hw, spec);
-                    npfftfft(hwmulspec, params->reversePlan);
+                    params->reversePlan->transformWeighted(spec.data(), params->weight.data(), spec.size());
                     const auto& xi_w0 = params->reversePlan->getOutput();
-                    auto final = addeach(params->x_old, nparange(xi_w0, 0, params->len1));
-                    nparangeset(xfinal, k, final);
-                    params->x_old = nparange(xi_w0, params->len1, params->Slen);
+                    volk_32fc_x2_add_32fc((lv_32fc_t*)(xfinal.data() + k), (const lv_32fc_t*)params->x_old.data(), (const lv_32fc_t*)xi_w0.data(), params->len1);
+                    std::copy(xi_w0.begin() + params->len1, xi_w0.begin() + params->Slen, params->x_old.begin());
                 }
                 return xfinal;
             }

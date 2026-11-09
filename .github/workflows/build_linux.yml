@@ -78,6 +78,7 @@ jobs:
             sudo apt-get install -y clang libclang-rt-dev libitpp-dev libvolk-dev libglfw3-dev libfftw3-dev libzstd-dev libflac-dev libopus-dev
             CXX=clang++ bash scripts/test_dsd_modes.sh build status
             CXX=clang++ bash scripts/test_runtime_audit.sh build status
+            CXX=clang++ bash scripts/test_noise_reduction.sh build status
 
         # The container writes into the bind-mounted source tree as root,
         # so the resulting files (including newly downloaded tarballs in

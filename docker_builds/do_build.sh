@@ -21,7 +21,7 @@ if [ "${BUILD_DSD:-false}" = "true" ]; then
     DSD_CMAKE_ARG="-DOPT_BUILD_DSD=ON"
 fi
 if [ "${RUN_DSD_TESTS:-false}" = "true" ]; then
-    MODE_TEST_APT="xvfb xauth libgl1-mesa-dri python3"
+    MODE_TEST_APT="xvfb xauth libgl1-mesa-dri python3 gdb"
 fi
 if [ "$CURL_SOURCE" = "bundled" ]; then
     EXTRA_APT="${EXTRA_APT:-} libssl-dev"

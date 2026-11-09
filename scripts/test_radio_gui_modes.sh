@@ -33,6 +33,12 @@ env -u APPDIR LD_LIBRARY_PATH="$build:${LD_LIBRARY_PATH:-}" LIBGL_ALWAYS_SOFTWAR
     stdbuf -oL "$build/sdrpp-full" --root "$tmp/config" > "$tmp/gui.log" 2>&1 || status=$?
 if [ "$status" -ne 0 ] || ! grep -qF 'OK: GUI RadioModule all 110 directed pairs twice' "$tmp/gui.log"; then
     tail -n 90 "$tmp/gui.log" >&2
+    if [ "$status" -eq 139 ] && command -v gdb >/dev/null; then
+        env -u APPDIR LD_LIBRARY_PATH="$build:${LD_LIBRARY_PATH:-}" LIBGL_ALWAYS_SOFTWARE=1 \
+            timeout --signal=TERM --kill-after=5 180s xvfb-run -a -s '-screen 0 1280x720x24' \
+            gdb --batch --return-child-result -ex 'set print thread-events off' \
+            -ex run -ex 'thread apply all bt' --args "$build/sdrpp-full" --root "$tmp/config" >&2 || true
+    fi
     echo "ERROR: GUI mode test failed (status $status)" >&2
     exit 1
 fi

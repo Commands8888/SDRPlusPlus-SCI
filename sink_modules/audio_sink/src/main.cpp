@@ -3,14 +3,12 @@
 #include <gui/gui.h>
 #include <signal_path/signal_path.h>
 #include <signal_path/sink.h>
-#include <dsp/buffer/packer.h>
-#include <dsp/convert/stereo_to_mono.h>
+#include <dsp/sink/audio_buffer.h>
 #include <dsp/sink/null_sink.h>
 #include <utils/flog.h>
 #include <RtAudio.h>
 #include <config.h>
 #include <core.h>
-#include <chrono>
 #include <memory>
 
 #define CONCAT(a, b) ((std::string(a) + b).c_str())
@@ -30,9 +28,7 @@ public:
     AudioSink(SinkManager::Stream* stream, std::string streamName) {
         _stream = stream;
         _streamName = streamName;
-        s2m.init(_stream->sinkOut);
-        monoPacker.init(&s2m.out, 512);
-        stereoPacker.init(_stream->sinkOut, 512);
+        audioBuffer.init(_stream->sinkOut);
 
 #if RTAUDIO_VERSION_MAJOR >= 6
         audio.setErrorCallback(&errorCallback);
@@ -114,10 +110,9 @@ public:
 
     void selectById(int id) {
         if (id < 0 || id >= (int)devList.size()) { return; }
+        bool restart = running;
+        if (restart) { doStop(); }
         devId = id;
-#ifdef __linux__
-        alsaMode = (audio.getCurrentApi() == RtAudio::LINUX_ALSA);
-#endif
 
         bool created = false;
         config.acquire();
@@ -153,8 +148,7 @@ public:
 
         _stream->setSampleRate(sampleRate);
 
-        if (running) { doStop(); }
-        if (running) { doStart(); }
+        if (restart) { doStart(); }
     }
 
     void menuHandler() {
@@ -175,12 +169,11 @@ public:
 
         ImGui::SetNextItemWidth(menuWidth);
         if (ImGui::Combo(("##_audio_sink_sr_" + _streamName).c_str(), &srId, sampleRatesTxt.c_str())) {
+            bool restart = running;
+            if (restart) { doStop(); }
             sampleRate = sampleRates[srId];
             _stream->setSampleRate(sampleRate);
-            if (running) {
-                doStop();
-                doStart();
-            }
+            if (restart) { doStart(); }
             config.acquire();
             config.conf[_streamName]["devices"][devList[devId].name] = sampleRate;
             config.release(true);
@@ -198,7 +191,11 @@ public:
             flog::warn("AudioSinkModule Warning: {} ({})", errorText, (int)type);
             break;
         default:
-            throw std::runtime_error(errorText);
+            // This may run on a native audio thread. Propagating an exception
+            // out of that callback terminates the process. Open/start failures
+            // are checked on the caller thread and fall back to a null drain.
+            flog::error("AudioSinkModule Error: {} ({})", errorText, (int)type);
+            break;
         }
     }
 #endif
@@ -226,7 +223,8 @@ private:
 
         RtAudio::StreamParameters parameters;
         parameters.deviceId = deviceIds[devId];
-        parameters.nChannels = 2;
+        mono = devList[devId].outputChannels == 1;
+        parameters.nChannels = mono ? 1 : 2;
         unsigned int bufferFrames = sampleRate / 60;
         RtAudio::StreamOptions opts;
         opts.flags = RTAUDIO_MINIMIZE_LATENCY;
@@ -234,25 +232,17 @@ private:
 
         try {
             audio.openStream(&parameters, NULL, RTAUDIO_FLOAT32, sampleRate, &bufferFrames, &callback, this, &opts);
-            stereoPacker.setSampleCount(bufferFrames);
-#ifdef __linux__
-            // ALSA does not auto-recover from callback-induced XRUN, so the
-            // callback must silence-fill rather than block. Other RtAudio
-            // backends (CoreAudio, WASAPI, Pulse, JACK) tolerate a blocking
-            // callback and get lower latency from it.
-            alsaMode = (audio.getCurrentApi() == RtAudio::LINUX_ALSA);
-            // Quarter of the device period; long enough to deliver real data
-            // when the chain is keeping up, short enough to silence-fill before
-            // ALSA hits XRUN when upstream stalls (e.g. radio paused).
-            readTimeout = std::chrono::milliseconds(std::max<unsigned int>(1, (bufferFrames * 250) / sampleRate));
-#endif
+            if (!audio.isStreamOpen()) { throw std::runtime_error("Audio stream did not open"); }
+            audioBuffer.configure(sampleRate, bufferFrames);
+            audioBuffer.start();
             audio.startStream();
-            stereoPacker.start();
+            if (!audio.isStreamRunning()) { throw std::runtime_error("Audio stream did not start"); }
         }
         catch (const std::exception& e) {
             flog::error("Could not open audio device {0}", e.what());
+            audioBuffer.stop();
             // Unwind any partially-opened stream: a failure past openStream()
-            // (startStream/stereoPacker.start) would otherwise leave the device
+            // (starting the native stream or producer) would otherwise leave the device
             // open, and doStop() skips RtAudio teardown in null mode.
             try {
                 if (audio.isStreamRunning()) { audio.stopStream(); }
@@ -279,47 +269,25 @@ private:
             nullMode = false;
             return;
         }
-        s2m.stop();
-        monoPacker.stop();
-        stereoPacker.stop();
-        monoPacker.out.stopReader();
-        stereoPacker.out.stopReader();
-        audio.stopStream();
-        audio.closeStream();
-        monoPacker.out.clearReadStop();
-        stereoPacker.out.clearReadStop();
+        // Stop the producer first; the device callback remains nonblocking
+        // and returns silence until the native backend has stopped it.
+        audioBuffer.stop();
+        try { if (audio.isStreamRunning()) { audio.stopStream(); } }
+        catch (const std::exception& e) { flog::warn("Audio stop failed: {}", e.what()); }
+        try { if (audio.isStreamOpen()) { audio.closeStream(); } }
+        catch (const std::exception& e) { flog::warn("Audio close failed: {}", e.what()); }
     }
 
     static int callback(void* outputBuffer, void* inputBuffer, unsigned int nBufferFrames, double streamTime, RtAudioStreamStatus status, void* userData) {
         AudioSink* _this = (AudioSink*)userData;
-#ifdef __linux__
-        if (_this->alsaMode) {
-            int count = _this->stereoPacker.out.read_for(_this->readTimeout);
-            if (count <= 0) {
-                // No data ready (paused, stalled, or stopped). Emit silence —
-                // a blocking wait or unwritten buffer here causes ALSA XRUN
-                // that the backend doesn't auto-recover from.
-                memset(outputBuffer, 0, nBufferFrames * sizeof(dsp::stereo_t));
-                return 0;
-            }
-            memcpy(outputBuffer, _this->stereoPacker.out.readBuf, nBufferFrames * sizeof(dsp::stereo_t));
-            _this->stereoPacker.out.flush();
-            return 0;
-        }
-#endif
-
-        int count = _this->stereoPacker.out.read();
-        if (count < 0) { return 0; }
-
-        memcpy(outputBuffer, _this->stereoPacker.out.readBuf, nBufferFrames * sizeof(dsp::stereo_t));
-        _this->stereoPacker.out.flush();
+        if (_this->mono) { _this->audioBuffer.renderMono(static_cast<float*>(outputBuffer), nBufferFrames); }
+        else { _this->audioBuffer.renderStereo(static_cast<dsp::stereo_t*>(outputBuffer), nBufferFrames); }
         return 0;
     }
 
     SinkManager::Stream* _stream;
-    dsp::convert::StereoToMono s2m;
-    dsp::buffer::Packer<float> monoPacker;
-    dsp::buffer::Packer<dsp::stereo_t> stereoPacker;
+    dsp::sink::AudioBuffer audioBuffer;
+    bool mono = false;
     std::unique_ptr<dsp::sink::Null<dsp::stereo_t>> nullSink;
     bool nullMode = false;
 
@@ -340,10 +308,6 @@ private:
     std::string sampleRatesTxt;
     unsigned int sampleRate = 48000;
 
-#ifdef __linux__
-    std::chrono::milliseconds readTimeout{4};
-    bool alsaMode = false;
-#endif // __linux__
 
 RtAudio audio;
 };

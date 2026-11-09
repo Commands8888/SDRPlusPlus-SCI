@@ -79,6 +79,7 @@ jobs:
             CXX=clang++ bash scripts/test_dsd_modes.sh build status
             CXX=clang++ bash scripts/test_runtime_audit.sh build status
             CXX=clang++ bash scripts/test_noise_reduction.sh build status
+            CXX=clang++ bash scripts/test_audio_flow.sh build status
 
         # The container writes into the bind-mounted source tree as root,
         # so the resulting files (including newly downloaded tarballs in

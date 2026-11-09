@@ -97,7 +97,7 @@ void IQFrontEnd::setSampleRate(double sampleRate) {
 }
 
 void IQFrontEnd::setBuffering(bool enabled) {
-    inBuf.bypass = !enabled;
+    inBuf.setBypass(!enabled);
 }
 
 void IQFrontEnd::setDecimation(int ratio) {

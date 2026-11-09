@@ -5,6 +5,7 @@
 #include <radio_interface.h>
 #include <signal_path/signal_path.h>
 #include <dsp/sink/handler_sink.h>
+#include <dsp/sink/audio_buffer.h>
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <atomic>
@@ -21,12 +22,60 @@
 
 SDRPP_MOD_INFO{"mode_integration", "Radio mode integration test", "SDRPP-FULL tests", 1, 0, 0, 1};
 
+static std::atomic<uint64_t> deviceFrames { 0 };
+class SimulatedAudioSink : public SinkManager::Sink {
+public:
+    SimulatedAudioSink(SinkManager::Stream* stream) : stream(stream),rate(stream->getSampleRate()) {
+        buffer.init(stream->sinkOut);
+        rateHandler.ctx=this;
+        rateHandler.handler=[](float rate,void* ctx) {
+            auto* self=static_cast<SimulatedAudioSink*>(ctx);
+            bool restart=self->running;
+            self->stop();self->rate=rate;
+            if(restart) self->start();
+        };
+        stream->srChange.bindHandler(&rateHandler);
+    }
+    ~SimulatedAudioSink() override { stop();stream->srChange.unbindHandler(&rateHandler); }
+    void start() override {
+        if(running) return;
+        unsigned frames=rate/100;
+        buffer.configure(rate,frames);buffer.start();
+        stopping=false;running=true;
+        device=std::thread([this,frames] {
+            std::vector<dsp::stereo_t> out(frames);
+            auto next=std::chrono::steady_clock::now();
+            while(!stopping.load()) {
+                unsigned got=buffer.renderStereo(out.data(),frames);
+                deviceFrames+=got;
+                for(auto x:out) if(!std::isfinite(x.l)||!std::isfinite(x.r)) std::abort();
+                next+=std::chrono::milliseconds(10);
+                std::this_thread::sleep_until(next);
+            }
+        });
+    }
+    void stop() override {
+        if(!running) return;
+        buffer.stop();stopping=true;
+        device.join();running=false;
+    }
+    void menuHandler() override {}
+private:
+    SinkManager::Stream* stream;
+    unsigned rate;
+    bool running=false;
+    std::atomic<bool> stopping { false };
+    dsp::sink::AudioBuffer buffer;
+    std::thread device;
+    EventHandler<float> rateHandler;
+};
+
 class ModeIntegration : public ModuleManager::Instance {
 public:
     ModeIntegration() {
         handler.stream = &iq;
         handler.ctx = this;
-        handler.selectHandler = [](void*) { core::setInputSampleRate(1000000.0); };
+        handler.selectHandler = [](void*) { core::setInputSampleRate(std::getenv("SDRPP_TEST_NR") ? 2400000.0 : 1000000.0); };
         handler.deselectHandler = [](void*) {};
         handler.menuHandler = [](void*) {};
         handler.tuneHandler = [](double, void*) {};
@@ -35,9 +84,9 @@ public:
         sigpath::sourceManager.registerSource("Mode test IQ", &handler);
         SinkManager::SinkProvider sink;
         sink.ctx = this;
-        sink.create = [](SinkManager::Stream* stream, std::string name, void* ctx) {
+        sink.create = [](SinkManager::Stream* stream, std::string name, void* ctx) -> SinkManager::Sink* {
             static_cast<ModeIntegration*>(ctx)->audioStream = stream;
-            return SinkManager::NullSink::create(stream, name, nullptr);
+            return new SimulatedAudioSink(stream);
         };
         sigpath::sinkManager.registerSinkProvider("Mode test sink", sink);
         frames.handler = [](MainWindow::FrameDrawArgs, void* ctx) { static_cast<ModeIntegration*>(ctx)->frame(); };
@@ -142,6 +191,8 @@ private:
         if (position == sequence.size() * 3 / 8) audioStream->setSampleRate(96000);
         if (position == sequence.size()) {
             if (!audioBuffers.load()) fail("Radio produced no audio buffers");
+            if (!deviceFrames.load()) fail("simulated audio device received no frames");
+            std::printf("OK: real-time audio sink consumed %llu frames during mode/rate changes\n",(unsigned long long)deviceFrames.load());
             std::sort(latencies.begin(), latencies.end());
             std::printf("OK: GUI RadioModule all 110 directed pairs %s; %zu switches; %d audio buffers; p95=%lld us max=%lld us; RSS warm=%ld KB final=%ld KB\n",
                 nrTest ? "with Noise Reduction" : "four times", position, audioBuffers.load(), latencies[latencies.size() * 95 / 100], latencies.back(), warmRSS, rssKB());

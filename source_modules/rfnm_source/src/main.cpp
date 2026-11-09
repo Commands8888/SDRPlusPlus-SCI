@@ -44,7 +44,8 @@ public:
     }
 
     ~RFNMSourceModule() {
-        
+        stop(this);
+        sigpath::sourceManager.unregisterSource("RFNM");
     }
 
     void postInit() {}

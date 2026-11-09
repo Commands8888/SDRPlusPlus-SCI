@@ -43,7 +43,7 @@ public:
         frames.ctx = this;
         gui::mainWindow.onFrameDraw.bindHandler(&frames);
         const int ids[] = {0, 1, 2, 3, 7, 6, 4, 5, 8, 0x1301, 0x1302};
-        for (int round = 0; round < 2; ++round)
+        for (int round = 0; round < 4; ++round)
             for (int from : ids)
                 for (int to : ids)
                     if (from != to) { sequence.push_back(from); sequence.push_back(to); }
@@ -126,12 +126,12 @@ private:
         waitFrames = 0;
         if (invalidAudio.load()) fail("non-finite audio sample");
         // Exercise actual audio-device rate changes and HPF coefficient ownership.
-        if (position == sequence.size() / 2) audioStream->setSampleRate(44100);
-        if (position == sequence.size() * 3 / 4) audioStream->setSampleRate(96000);
+        if (position == sequence.size() / 4) audioStream->setSampleRate(44100);
+        if (position == sequence.size() * 3 / 8) audioStream->setSampleRate(96000);
         if (position == sequence.size()) {
             if (!audioBuffers.load()) fail("Radio produced no audio buffers");
             std::sort(latencies.begin(), latencies.end());
-            std::printf("OK: GUI RadioModule all 110 directed pairs twice; %zu switches; %d audio buffers; p95=%lld us max=%lld us; RSS warm=%ld KB final=%ld KB\n",
+            std::printf("OK: GUI RadioModule all 110 directed pairs four times; %zu switches; %d audio buffers; p95=%lld us max=%lld us; RSS warm=%ld KB final=%ld KB\n",
                 position, audioBuffers.load(), latencies[latencies.size() * 95 / 100], latencies.back(), warmRSS, rssKB());
             rusage usage{};
             getrusage(RUSAGE_SELF, &usage);

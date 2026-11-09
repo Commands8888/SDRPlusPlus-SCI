@@ -44,7 +44,8 @@ public:
     }
 
     ~HarogicSourceModule() {
-        
+        stop(this);
+        sigpath::sourceManager.unregisterSource("Harogic");
     }
 
     void postInit() {}

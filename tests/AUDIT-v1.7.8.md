@@ -19,6 +19,14 @@ bandplans, colormaps, temas, ícones e os créditos foram preservados.
   Ataque, recuperação, ponto de operação, limitador e ganho manual mantêm os
   mesmos cálculos. A alteração de tom CW/CW-R também é sincronizada com o
   rotador, preservando sua fase entre blocos.
+- **Histórico de sincronização:** FD/MM liam o início de buffers recém-alocados
+  sem inicializá-lo. Um teste com páginas preenchidas com NaN reproduziu uma
+  conversão inválida para inteiro no sincronizador FD. Inicialização, reset e
+  troca dos parâmetros de interpolação agora zeram o histórico necessário.
+  Os coeficientes e os ganhos dos laços permanecem os mesmos.
+- **Parada dos streams:** ThreadSanitizer reproduziu uma corrida entre a espera
+  do leitor e `clearReadStop`. A limpeza dos sinais de parada de leitura/escrita
+  agora usa os mesmos mutexes das respectivas filas, sem custo por amostra.
 - **Configuração:** os retornos por caminho vazio ou diretório deixavam um
   mutex preso. O carregamento usa RAII, recupera objetos JSON inválidos e o
   autosave usa estado sincronizado. No Linux, o arquivo novo é escrito em um
@@ -32,6 +40,11 @@ bandplans, colormaps, temas, ícones e os créditos foram preservados.
   as instâncias antes de chamar `_END_` nas bibliotecas e fechar a interface.
   Antes, o caminho normal chamava `_END_` sem destruir as instâncias. Uma
   fábrica de módulos que devolva ponteiro nulo agora é rejeitada com erro.
+  O teste completo expôs fontes ainda registradas após sua destruição: Fobos,
+  RFNM, Harogic, KCSDR, Dragon Labs e SDDC tinham destrutores vazios. Agora
+  param a recepção e removem seu registro. O menu deixa de selecionar outras
+  fontes durante o fechamento, evitando reconstruir o frontend ao remover cada
+  driver. O observador do teste exige que não reste fonte registrada ao final.
 - **Recursos:** JSON/cores inválidos em tema ou colormap são rejeitados com
   diagnóstico. A falta do tema Dark/Turbo já não causa acesso a entrada
   inexistente; só nessa situação há um fallback. Arrays RGB têm um proprietário
@@ -75,14 +88,16 @@ bash scripts/test_radio_gui_modes.sh build
 
 - ASan/UBSan cobrem as rotinas instrumentadas de reamostragem, AGC,
   configuração/recursos e os testes de DSD/modos já existentes.
-- TSan verifica controles/telemetria do AGC real e complexo, tom CW,
+- TSan verifica controles/telemetria do AGC real e complexo, tom CW, sinais de parada dos streams,
   autosave e os testes de status DSD/oldDSD da v1.7.7.
 - Os testes de DSP fazem 440 transições: todos os 110 pares dirigidos duas vezes
   entre NFM, WFM, AM, DSB, RAW, LSB, USB, CW, CW-R, DSD e oldDSD.
-- O teste GUI usa o Radio/VFO/frontend reais e IQ sintético, muda o dispositivo
+- O teste GUI faz 880 seleções (cada par dirigido quatro vezes), usa o
+  Radio/VFO/frontend reais e IQ sintético, muda o dispositivo
   simulado entre 48 / 44,1 / 96 kHz e verifica áudio finito, bandwidth válido e
   preservação dos ajustes de tom CW/CW-R e HPF FM/AM. Mede latência de troca,
-  CPU do processo e RSS após aquecimento/final. Deixa a recepção ativa ao fechar
+  CPU do processo e RSS após aquecimento/final. As últimas 440 seleções mantêm
+  96 kHz; os dois pontos de RSS usam o mesmo modo. Deixa a recepção ativa ao fechar
   para exigir o encerramento correto do programa, sem o próprio teste parar
   previamente os trabalhadores.
 - No contêiner descartável Noble do CI, `test_package_startup.sh` extrai o .deb
@@ -93,6 +108,10 @@ bash scripts/test_radio_gui_modes.sh build
 - A matriz Linux existente e a verificação da librtlsdr privada 2.0.3 permanecem.
   A release única `Realease`, as notas de João e os sufixos de distribuição dos
   downloads são preservados.
+
+Fobos/RFNM fazem parte dos pacotes e entram no teste dos módulos padrão. Os
+destrutores dos quatro módulos opcionais com o mesmo defeito foram corrigidos
+pelo mesmo padrão; seus SDKs/hardwares não estão disponíveis nesta matriz.
 
 Os testes locais não dispõem de receptor físico nem dispositivo de áudio real.
 A interface completa é executada no CI com Xvfb/Mesa. ASan não instrumenta as

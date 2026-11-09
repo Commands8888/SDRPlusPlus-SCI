@@ -31,7 +31,7 @@ for scenario in fresh reopen resource-recovery; do
         stdbuf -oL "$build/sdrpp-full" --root "$config_root" > "$tmp/$scenario.log" 2>&1 || status=$?
     if [ "$status" -ne 0 ] || ! grep -qF 'OK: default startup instances drained and destroyed' "$tmp/$scenario.log"; then
         tail -n 120 "$tmp/$scenario.log" >&2
-        if [ "$status" -eq 139 ] && command -v gdb >/dev/null; then
+        if { [ "$status" -eq 139 ] || [ "$status" -eq 134 ]; } && command -v gdb >/dev/null; then
             env -u APPDIR LD_LIBRARY_PATH="$build:${LD_LIBRARY_PATH:-}" LIBGL_ALWAYS_SOFTWARE=1 \
                 timeout --signal=TERM --kill-after=5 90s xvfb-run -a -s '-screen 0 1280x720x24' \
                 gdb --batch --return-child-result -ex 'set print thread-events off' \

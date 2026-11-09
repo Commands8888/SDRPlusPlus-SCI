@@ -41,12 +41,13 @@ bash scripts/test_radio_gui_modes.sh build
 
 This compiles a temporary test-only source/controller module, feeds synthetic
 IQ through the real frontend and switches the real Radio interface from the
-GUI thread. Every directed pair runs twice while the menu/status is drawn.
+GUI thread. Every directed pair runs four times (880 selections) while the menu/status is drawn.
 The test checks selected mode, finite positive bandwidth and audio, normal shutdown and
 preservation of distinct CW/CW-R tones and enabled FM/AM high-pass settings.
 It changes the simulated audio device from 48 kHz to 44.1/96 kHz during playback.
 It reports switch latency and
-resident memory after warm-up and at completion; these are diagnostics, not
+resident memory after warm-up and at completion, at the same mode and the same
+96 kHz audio rate for the last 440 selections; these are diagnostics, not
 a hardware performance guarantee. The module is never installed in packages.
 Noble CI runs the GUI and memory harnesses inside its active build container.
 Its concurrent-status test uses Clang TSan directly on the ephemeral runner,

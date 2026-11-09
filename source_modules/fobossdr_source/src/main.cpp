@@ -58,7 +58,8 @@ public:
     }
 
     ~FobosSDRSourceModule() {
-        // Nothing to do
+        stop(this);
+        sigpath::sourceManager.unregisterSource("FobosSDR");
     }
 
     void postInit() {}

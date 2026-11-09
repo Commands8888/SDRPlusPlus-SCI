@@ -32,6 +32,7 @@ void SourceManager::unregisterSource(std::string name) {
         }
         sigpath::iqFrontEnd.setInput(&nullSource);
         selectedHandler = NULL;
+        selectedName.clear();
     }
     sources.erase(name);
     onSourceUnregistered.emit(name);

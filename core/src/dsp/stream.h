@@ -112,6 +112,7 @@ namespace dsp {
         }
 
         virtual void clearWriteStop() {
+            std::lock_guard<std::mutex> lck(swapMtx);
             writerStop = false;
         }
 
@@ -124,6 +125,7 @@ namespace dsp {
         }
 
         virtual void clearReadStop() {
+            std::lock_guard<std::mutex> lck(rdyMtx);
             readerStop = false;
         }
 

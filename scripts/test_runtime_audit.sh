@@ -23,12 +23,16 @@ if [ "$suite" = status ]; then
     TSAN_OPTIONS=halt_on_error=1 timeout 90s "$tmp/agc_concurrency"
     compile cw_tone_concurrency thread
     TSAN_OPTIONS=halt_on_error=1 timeout 60s "$tmp/cw_tone_concurrency"
+    compile stream_stop_concurrency thread
+    TSAN_OPTIONS=halt_on_error=1 timeout 45s "$tmp/stream_stop_concurrency"
     compile config_lifecycle thread "$repo_root/core/src/config.cpp"
     TSAN_OPTIONS=halt_on_error=1 timeout 45s "$tmp/config_lifecycle"
 else
     export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0:quarantine_size_mb=32}"
     compile resampler_precision address,undefined
     timeout 120s "$tmp/resampler_precision"
+    compile clock_recovery_history address,undefined,float-cast-overflow -Wl,--wrap=volk_malloc
+    timeout 30s "$tmp/clock_recovery_history"
     compile agc_response address,undefined
     timeout 60s "$tmp/agc_response"
     compile config_lifecycle address,undefined "$repo_root/core/src/config.cpp"

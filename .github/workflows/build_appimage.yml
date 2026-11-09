@@ -21,6 +21,7 @@ env:
 
 jobs:
     build:
+        timeout-minutes: 45
         runs-on: ${{ inputs.runner }}
 
         steps:
@@ -75,3 +76,7 @@ jobs:
           with:
               name: ${{ inputs.artifact }}
               path: ${{ runner.workspace }}/${{ inputs.artifact }}.AppImage
+
+        - name: Remove the temporary build container
+          if: always()
+          run: docker rm -f build >/dev/null 2>&1 || true

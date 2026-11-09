@@ -37,6 +37,7 @@ env:
 
 jobs:
     build:
+        timeout-minutes: 45
         # Noble's host-side race test needs the same runtime SONAMEs as its
         # container (Volk 3.1, FLAC 12); ubuntu-latest may use newer ABIs.
         runs-on: ${{ inputs.base_image == 'ubuntu:noble' && inputs.runner == 'ubuntu-latest' && 'ubuntu-24.04' || inputs.runner }}
@@ -103,3 +104,7 @@ jobs:
           with:
               name: ${{ inputs.artifact }}
               path: ${{ runner.workspace }}/${{ inputs.artifact }}.deb
+
+        - name: Remove the temporary build container
+          if: always()
+          run: docker rm -f build >/dev/null 2>&1 || true

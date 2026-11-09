@@ -13,4 +13,5 @@ cc -O1 -g -ffunction-sections -fdata-sections -Drtlsdr_STATIC \
     "$source_dir"/src/tuner_*.c \
     -Wl,--gc-sections $(pkg-config --libs libusb-1.0) -lm -pthread \
     -o "$tmp/rtl-async-test"
-ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=1}" "$tmp/rtl-async-test"
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=1}" \
+    timeout --signal=TERM --kill-after=5 30s "$tmp/rtl-async-test"

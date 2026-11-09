@@ -2,8 +2,6 @@
 #include "../block.h"
 #define TEST_BUFFER_SIZE 32
 
-// IMPORTANT: THIS IS TRASH AND MUST BE REWRITTEN IN THE FUTURE
-
 namespace dsp::buffer {
     template <class T>
     class SampleFrameBuffer : public block {
@@ -44,8 +42,26 @@ namespace dsp::buffer {
         }
 
         void flush() {
-            std::unique_lock lck(bufMtx);
-            readCur = writeCur;
+            {
+                std::lock_guard<std::mutex> lock(bufMtx);
+                readCur = writeCur;
+                queued = 0;
+            }
+            spaceAvailable.notify_all();
+        }
+
+        int queuedFrames() {
+            std::lock_guard<std::mutex> lock(bufMtx);
+            return queued;
+        }
+
+        void setBypass(bool enabled) {
+            assert(base_type::_block_init);
+            std::lock_guard<std::recursive_mutex> lock(base_type::ctrlMtx);
+            if (bypass == enabled) { return; }
+            base_type::tempStop();
+            bypass = enabled;
+            base_type::tempStart();
         }
 
         int run() {
@@ -62,11 +78,20 @@ namespace dsp::buffer {
 
             // Push it on the ring buffer
             {
-                std::lock_guard<std::mutex> lck(bufMtx);
+                std::unique_lock<std::mutex> lck(bufMtx);
+                // A wrapped write index is not an empty queue. Preserve all
+                // pending frames and apply backpressure rather than overwrite.
+                spaceAvailable.wait(lck, [this] { return queued < TEST_BUFFER_SIZE || stopWorker; });
+                if (stopWorker) {
+                    lck.unlock();
+                    _in->flush();
+                    return -1;
+                }
                 memcpy(buffers[writeCur], _in->readBuf, count * sizeof(T));
                 sizes[writeCur] = count;
                 writeCur++;
                 writeCur = ((writeCur) % TEST_BUFFER_SIZE);
+                ++queued;
             }
             cnd.notify_all();
             _in->flush();
@@ -77,7 +102,7 @@ namespace dsp::buffer {
             while (true) {
                 // Wait for data
                 std::unique_lock lck(bufMtx);
-                cnd.wait(lck, [this]() { return (((writeCur - readCur + TEST_BUFFER_SIZE) % TEST_BUFFER_SIZE) > 0) || stopWorker; });
+                cnd.wait(lck, [this]() { return queued > 0 || stopWorker; });
                 if (stopWorker) { break; }
 
                 // Write one to output buffer and unlock in preparation to swap buffers
@@ -85,7 +110,9 @@ namespace dsp::buffer {
                 memcpy(out.writeBuf, buffers[readCur], count * sizeof(T));
                 readCur++;
                 readCur = ((readCur) % TEST_BUFFER_SIZE);
+                --queued;
                 lck.unlock();
+                spaceAvailable.notify_one();
 
                 // Swap
                 if (!out.swap(count)) { break; }
@@ -108,15 +135,24 @@ namespace dsp::buffer {
         void doStop() {
             _in->stopReader();
             out.stopWriter();
-            stopWorker = true;
+            {
+                std::lock_guard<std::mutex> lock(bufMtx);
+                stopWorker = true;
+            }
             cnd.notify_all();
+            spaceAvailable.notify_all();
 
             if (base_type::workerThread.joinable()) { base_type::workerThread.join(); }
             if (readWorkerThread.joinable()) { readWorkerThread.join(); }
 
             _in->clearReadStop();
             out.clearWriteStop();
-            stopWorker = false;
+            {
+                std::lock_guard<std::mutex> lock(bufMtx);
+                stopWorker = false;
+                readCur = writeCur = queued = 0;
+            }
+            if (_in->read_for(std::chrono::milliseconds(0)) > 0) { _in->flush(); }
         }
 
         stream<T>* _in;
@@ -124,9 +160,11 @@ namespace dsp::buffer {
         std::thread readWorkerThread;
         std::mutex bufMtx;
         std::condition_variable cnd;
+        std::condition_variable spaceAvailable;
         T* buffers[TEST_BUFFER_SIZE];
         int sizes[TEST_BUFFER_SIZE];
 
         bool stopWorker = false;
+        int queued = 0;
     };
 }

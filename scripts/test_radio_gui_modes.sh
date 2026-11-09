@@ -60,6 +60,7 @@ if [ "$status" -ne 0 ] || ! grep -qF 'OK: GUI RadioModule all 110 directed pairs
 fi
 grep -F 'OK: GUI RadioModule' "$tmp/gui.log"
 grep -F 'OK: GUI workload' "$tmp/gui.log"
+grep -F 'OK: real-time audio sink consumed' "$tmp/gui.log"
 grep -F 'OK: active source stopped before controller teardown' "$tmp/gui.log"
 grep -F 'OK: GUI Radio and controller instances destroyed' "$tmp/gui.log"
 if [ "$variant" = nr ]; then grep -F 'OK: NR detached from deleted radios' "$tmp/gui.log"; fi

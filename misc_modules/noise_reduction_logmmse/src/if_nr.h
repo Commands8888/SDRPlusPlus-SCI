@@ -39,6 +39,7 @@ namespace dsp {
 
     public:
         ComplexArray worker1c;
+        size_t inputOffset = 0;
         int freq = 192000;
         LogMMSE::SavedParamsC params;
 
@@ -78,18 +79,25 @@ namespace dsp {
             if (shouldReset.exchange(false, std::memory_order_relaxed) || curFreq != freq) {
                 flog::debug("Resetting IF NR LogMMSE");
                 worker1c.clear();
+                inputOffset = 0;
                 params.reset();
                 freq = curFreq;
             }
             params.hold = txActive.load(std::memory_order_relaxed);
-            worker1c.insert(worker1c.end(), in, in + count);
+            if (count) {
+                if (inputOffset) {
+                    worker1c.erase(worker1c.begin(), worker1c.begin() + inputOffset);
+                    inputOffset = 0;
+                }
+                worker1c.insert(worker1c.end(), in, in + count);
+            }
             int noiseFrames = 12;
             int fram = freq / 100;
             int initialDemand = params.Xk_prev.empty() ? 0 : params.Slen + params.len2;
             if (params.Xk_prev.empty()) {
                 initialDemand = fram * (noiseFrames + 2) * 2;
             }
-            if (worker1c.size() < initialDemand) {
+            if (worker1c.size() - inputOffset < initialDemand) {
                 outCount = 0;
                 return;
             }
@@ -98,20 +106,16 @@ namespace dsp {
                 LogMMSE::logmmse_sample(worker1c, freq, &params, noiseFrames);
             }
 
-            // logmmse_all() can flush a large startup/backlog burst. Bound one
-            // pass so we never write past the fixed stream buffer: with
-            // Slen >= fram * 2 the output is at most maxInput - Slen samples.
-            int maxProcessInput = STREAM_BUFFER_SIZE + (fram * 2);
-            auto rv = LogMMSE::logmmse_all(worker1c, &params, maxProcessInput);
+            // One hop per publication bounds the processing burst and lets
+            // downstream FFT/radios/sinks run between hops. Drain the backlog
+            // before accepting another input packet; no samples are dropped.
+            outCount = LogMMSE::processInto(worker1c.data() + inputOffset,
+                worker1c.size() - inputOffset, &params, out, params.len2, 4.0f);
+            inputOffset += outCount;
+        }
 
-            int limit = (int)rv.size();
-            auto dta = rv.data();
-            for (int i = 0; i < limit; i++) {
-                auto lp = dta[i];
-                out[i] = lp * 4.0;
-            }
-            worker1c.erase(worker1c.begin(), worker1c.begin() + limit);
-            outCount = limit;
+        bool hasPendingFrame() const {
+            return !params.Xk_prev.empty() && worker1c.size() - inputOffset >= static_cast<size_t>(params.Slen + params.len2);
         }
 
         long long lastReport = currentTimeMillis();
@@ -120,13 +124,14 @@ namespace dsp {
         int prevPercentUsage = 0;
 
         int runMMSE(stream<complex_t>* _in, stream<complex_t>& out) {
-            int count = _in->read();
+            bool drain = hasPendingFrame();
+            int count = drain ? 0 : _in->read();
             if (count < 0) { return -1; }
             int outCount;
             long long ctm0 = currentTimeMillis();
-            process(_in->readBuf, count, out.writeBuf, outCount);
+            process(drain ? nullptr : _in->readBuf, count, out.writeBuf, outCount);
             long long ctm = currentTimeMillis();
-            _in->flush();
+            if (!drain) { _in->flush(); }
             if (outCount && !out.swap(outCount)) {
                 return -1;
             }

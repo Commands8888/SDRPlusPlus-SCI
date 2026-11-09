@@ -42,7 +42,7 @@ namespace dsp {
                 int len1;
                 int len2;
                 FloatArray win;
-                int nFFT;
+                int nFFT = 0;
                 std::shared_ptr<FFTPlan> forwardPlan;
                 std::shared_ptr<FFTPlan> reversePlan;
                 float aa = 0.98;
@@ -51,6 +51,14 @@ namespace dsp {
                 // Reused per-bin working storage; history still retains the
                 // same number of complete, full-bandwidth FFT frames.
                 FloatArray gain, integral, weight;
+                FloatArray recycledNoise, recycledDeviation;
+                FloatArray noiseCandidate, noiseVariance;
+
+                FloatArray acquireNoiseFrame() {
+                    FloatArray frame = std::move(recycledNoise);
+                    frame.resize(nFFT);
+                    return frame;
+                }
 
                 void reset() {
                     noise_history.clear();
@@ -66,6 +74,7 @@ namespace dsp {
                 // deep copy.
                 void add_noise_history(FloatArray noise) {
                     if (hold) {
+                        recycledNoise = std::move(noise);
                         return;
                     }
                     if (noise.size() != nFFT) {
@@ -79,10 +88,12 @@ namespace dsp {
                     volk_32f_x2_add_32f(sums.data(), sums.data(), latest.data(), nFFT);
                     while (noise_history.size() > noise_history_len()) {
                         volk_32f_x2_subtract_32f(sums.data(), sums.data(), noise_history.front().data(), nFFT);
+                        recycledNoise = std::move(noise_history.front());
                         noise_history.pop_front();
                     }
 
-                    FloatArray diff(nFFT);
+                    FloatArray diff = std::move(recycledDeviation);
+                    diff.resize(nFFT);
                     const float scale = 1.0f / noise_history.size();
                     for (int i = 0; i < nFFT; ++i) {
                         float delta = latest[i] - sums[i] * scale;
@@ -94,6 +105,7 @@ namespace dsp {
 
                     while (dev_history.size() > noise_history_len()) {
                         volk_32f_x2_subtract_32f(devs.data(), devs.data(), dev_history.front().data(), nFFT);
+                        recycledDeviation = std::move(dev_history.front());
                         dev_history.pop_front();
                     }
 
@@ -104,33 +116,25 @@ namespace dsp {
                 void update_noise_mu2() {
                     auto nframes = noise_history.size();
                     if (nframes > 100 && !hold) {
-                        auto noise_mu2_copy = noise_mu2;
-
-                        auto noiseAvg = mul(sums, 1 / (float)nframes);
-
-                        auto hi = mul(devs, 1 / (float)nframes);
-                        auto devSquare = muleach(hi, hi);
-                        auto devSquareD = devSquare.data();
-                        for (int z = 0; z < nFFT; z++) {
-                            if (abs(z - nFFT/2) < nFFT * 15 / 100) {
-                                // after fft, rightmost and leftmost sides of real frequencies range are at the center of the resulting table.
-                                // We exclude middle of the table from lookup
-                                devSquareD[z] = BackgroundNoiseCalculator::ERASED_SAMPLE;
-                            }
+                        const float scale = 1.0f / nframes;
+                        noiseCandidate.resize(nFFT);
+                        noiseVariance.resize(nFFT);
+                        volk_32f_s32f_multiply_32f(noiseVariance.data(), devs.data(), scale, nFFT);
+                        volk_32f_x2_multiply_32f(noiseVariance.data(), noiseVariance.data(), noiseVariance.data(), nFFT);
+                        int radius = nFFT * 15 / 100;
+                        if (radius > 0) {
+                            std::fill(noiseVariance.begin() + nFFT/2 - radius + 1,
+                                noiseVariance.begin() + nFFT/2 + radius, BackgroundNoiseCalculator::ERASED_SAMPLE);
                         }
-                        memset(noise_mu2.data(), 0, nFFT*sizeof(float));
-                        float detectedNoise = backgroundNoiseCalculator.addFrame(devSquare);
-                        auto acceptible_stdev = detectedNoise;
-                        auto nmu2 = noise_mu2.data();
-                        auto navg =  noiseAvg.data();
-                        for(int q=0; q < nFFT; q++) {
-                            if (devSquareD[q] < acceptible_stdev) {
-                                nmu2[q] = navg[q] * navg[q];
-                            }
+                        float threshold = backgroundNoiseCalculator.addFrame(noiseVariance);
+                        for (int i = 0; i < nFFT; ++i) {
+                            float average = sums[i] * scale;
+                            noiseCandidate[i] = noiseVariance[i] < threshold ? average * average : 0.0f;
                         }
-
-                        if (!linearInterpolateHoles(nmu2, nFFT)) {
-                            noise_mu2 = std::move(noise_mu2_copy);
+                        // Build a candidate instead of copying the old model
+                        // merely to restore it if interpolation has no anchors.
+                        if (linearInterpolateHoles(noiseCandidate.data(), nFFT)) {
+                            noise_mu2.swap(noiseCandidate);
                         }
                     }
                 }
@@ -146,9 +150,12 @@ namespace dsp {
                 params->len2 = params->Slen - params->len1;         // len1+len2
                 params->win = nphanning(params->Slen);
                 params->win = div(mul(params->win, params->len2), npsum(params->win));
-                params->nFFT = 2 * params->Slen;
-                params->forwardPlan = allocateFFTWPlan(false, params->nFFT);
-                params->reversePlan = allocateFFTWPlan(true, params->nFFT);
+                int fftSize = 2 * params->Slen;
+                if (params->nFFT != fftSize || !params->forwardPlan || !params->reversePlan) {
+                    params->forwardPlan = allocateFFTWPlan(false, fftSize);
+                    params->reversePlan = allocateFFTWPlan(true, fftSize);
+                }
+                params->nFFT = fftSize;
                 params->sums = npzeros(params->nFFT);
                 params->devs = npzeros(params->nFFT);
                 params->gain.resize(params->nFFT);
@@ -159,8 +166,9 @@ namespace dsp {
                 auto noise_mean = npzeros(params->nFFT);
                 for (int j = 0; j < params->Slen * noise_frames; j += params->Slen) {
                     params->forwardPlan->transformWeighted(x.data() + j, params->win.data(), params->Slen);
-                    auto noise = npabsolute(params->forwardPlan->getOutput());
-                    noise_mean = addeach(noise_mean, noise);
+                    auto noise = params->acquireNoiseFrame();
+                    volk_32fc_magnitude_32f(noise.data(), (const lv_32fc_t*)params->forwardPlan->getOutput().data(), params->nFFT);
+                    volk_32f_x2_add_32f(noise_mean.data(), noise_mean.data(), noise.data(), params->nFFT);
                     params->add_noise_history(std::move(noise));
                 }
                 params->noise_mu2 = div(noise_mean, noise_frames);
@@ -174,21 +182,17 @@ namespace dsp {
                 params->ksi_min = ::pow(10, -25.0 / 10.0);
             }
 
-            // maxInput caps how much of x is consumed in one pass (-1 = all of it),
-            // so a large backlog can be drained in bounded chunks without copying.
-            static ComplexArray logmmse_all(const ComplexArray &x, SavedParamsC *params, int maxInput = -1) {
-                int inputLen = (int)x.size();
-                if (maxInput >= 0 && maxInput < inputLen) {
-                    inputLen = maxInput;
-                }
-                auto Nframes = floor(inputLen / params->len2) - floor(params->Slen / params->len2);
-                if (Nframes <= 0) { return {}; }
-                params->update_noise_mu2();
-                auto xfinal = npzeros_c(Nframes * params->len2);
-                for (int k = 0; k < Nframes * params->len2; k += params->len2) {
-                    params->forwardPlan->transformWeighted(x.data() + k, params->win.data(), params->Slen);
+            // Write directly to a caller's fixed output buffer. The estimator
+            // advances once per 10 ms hop, independent of upstream packet sizes.
+            static int processInto(const complex_t* x, int inputLen, SavedParamsC* params,
+                                   complex_t* output, int capacity, float outputGain = 1.0f) {
+                int frames = std::min(std::max(0, inputLen / params->len2 - 2), capacity / params->len2);
+                for (int k = 0; k < frames * params->len2; k += params->len2) {
+                    params->update_noise_mu2();
+                    params->forwardPlan->transformWeighted(x + k, params->win.data(), params->Slen);
                     const auto& spec = params->forwardPlan->getOutput();
-                    auto sig = npabsolute(spec);
+                    auto sig = params->acquireNoiseFrame();
+                    volk_32fc_magnitude_32f(sig.data(), (const lv_32fc_t*)spec.data(), params->nFFT);
                     auto sigD = sig.data();
                     for (auto z = 1; z < sig.size(); z++) {
                         if (sigD[z] == 0) {
@@ -214,8 +218,7 @@ namespace dsp {
                         params->gain[i] = a;
                         params->integral[i] = a * gamma;
                     }
-                    // Keep the scalar E1 lookup separate so the estimator
-                    // arithmetic above can be vectorized by the compiler.
+                    // Keep the scalar E1 lookup separate from the gain arithmetic.
                     for (int i = 0; i < params->nFFT; ++i) {
                         params->integral[i] = dsp::math::expn(params->integral[i]) * 0.5f;
                     }
@@ -234,10 +237,22 @@ namespace dsp {
                     params->add_noise_history(std::move(sig));
                     params->reversePlan->transformWeighted(spec.data(), params->weight.data(), spec.size());
                     const auto& xi_w0 = params->reversePlan->getOutput();
-                    volk_32fc_x2_add_32fc((lv_32fc_t*)(xfinal.data() + k), (const lv_32fc_t*)params->x_old.data(), (const lv_32fc_t*)xi_w0.data(), params->len1);
+                    volk_32fc_x2_add_32fc((lv_32fc_t*)(output + k), (const lv_32fc_t*)params->x_old.data(), (const lv_32fc_t*)xi_w0.data(), params->len1);
+                    if (outputGain != 1.0f) {
+                        volk_32f_s32f_multiply_32f((float*)(output + k), (const float*)(output + k), outputGain, params->len1 * 2);
+                    }
                     std::copy(xi_w0.begin() + params->len1, xi_w0.begin() + params->Slen, params->x_old.begin());
                 }
-                return xfinal;
+                return frames * params->len2;
+            }
+
+            // Compatibility adapter for batch callers and numerical oracles.
+            static ComplexArray logmmse_all(const ComplexArray& x, SavedParamsC* params, int maxInput = -1) {
+                int inputLen = maxInput < 0 ? (int)x.size() : std::min<int>(x.size(), maxInput);
+                int count = std::max(0, inputLen / params->len2 - 2) * params->len2;
+                ComplexArray output(count);
+                if (count) { processInto(x.data(), inputLen, params, output.data(), count); }
+                return output;
             }
 
         };

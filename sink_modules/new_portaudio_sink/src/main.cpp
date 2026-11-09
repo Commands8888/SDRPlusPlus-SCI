@@ -4,8 +4,9 @@
 #include <signal_path/signal_path.h>
 #include <signal_path/sink.h>
 #include <portaudio.h>
-#include <dsp/buffer/packer.h>
-#include <dsp/convert/stereo_to_mono.h>
+#include <dsp/sink/audio_buffer.h>
+#include <dsp/sink/null_sink.h>
+#include <memory>
 #include <utils/flog.h>
 #include <config.h>
 #include <algorithm>
@@ -32,7 +33,7 @@ public:
         const PaDeviceInfo* deviceInfo;
         const PaHostApiInfo* hostApiInfo;
         PaDeviceIndex id;
-        int defaultSrId;
+        int defaultSrId = 0;
         PaStreamParameters outputParams;
         std::vector<double> sampleRates;
         std::string sampleRatesTxt;
@@ -51,14 +52,7 @@ public:
         std::string selected = config.conf[_streamName]["device"];
         config.release(true);
 
-        // Register the play state handler
-        playStateHandler.handler = playStateChangeHandler;
-        playStateHandler.ctx = this;
-        gui::mainWindow.onPlayStateChange.bindHandler(&playStateHandler);
-
-        // Initialize DSP blocks
-        packer.init(_stream->sinkOut, 1024);
-        s2m.init(&packer.out);
+        audioBuffer.init(_stream->sinkOut);
 
         // Refresh devices and select the one from the config
         refreshDevices();
@@ -67,72 +61,44 @@ public:
 
     ~AudioSink() {
         stop();
-        gui::mainWindow.onPlayStateChange.unbindHandler(&playStateHandler);
     }
 
     void start() {
-        if (running || selectedDevName.empty()) { return; }
-
-        // Get device and samplerate
-        AudioDevice_t& dev = devices[deviceNames[devId]];
+        if (running) { return; }
+        if (selectedDevName.empty()) { startNullDrain(); return; }
+        const AudioDevice_t& dev = selectedDev;
         double sampleRate = dev.sampleRates[srId];
-        int blockSize = sampleRate / BLOCK_SIZE_DIVIDER;
-
-        // Set the SDR++ stream sample rate
+        unsigned blockSize = sampleRate / BLOCK_SIZE_DIVIDER;
         _stream->setSampleRate(sampleRate);
-
-        // Update the block size on the packer
-        packer.setSampleCount(blockSize);
-
-        // Clear read stop signals
-        packer.out.clearReadStop();
-        s2m.out.clearReadStop();
-
-        // Open the stream
-        PaError err;
-        if (dev.deviceInfo->maxOutputChannels == 1) {
-            packer.start();
-            s2m.start();
-            stereo = false;
-            err = Pa_OpenStream(&devStream, NULL, &dev.outputParams, sampleRate, blockSize, paNoFlag, _mono_cb, this);
+        stereo = dev.deviceInfo->maxOutputChannels > 1;
+        auto callback = stereo ? _stereo_cb : _mono_cb;
+        PaError err = Pa_OpenStream(&devStream, NULL, &dev.outputParams, sampleRate, blockSize, paNoFlag, callback, this);
+        if (err == paNoError) {
+            audioBuffer.configure(sampleRate, blockSize);
+            audioBuffer.start();
+            err = Pa_StartStream(devStream);
         }
-        else {
-            packer.start();
-            stereo = true;
-            err = Pa_OpenStream(&devStream, NULL, &dev.outputParams, sampleRate, blockSize, paNoFlag, _stereo_cb, this);
-        }
-
-        // In case of error, abort
-        if (err) {
+        if (err != paNoError) {
             flog::error("PortAudio error {0}: {1}", err, Pa_GetErrorText(err));
+            audioBuffer.stop();
+            if (devStream) { Pa_AbortStream(devStream); Pa_CloseStream(devStream); devStream = nullptr; }
+            startNullDrain();
             return;
         }
-
-        flog::info("Starting PortAudio stream at {0} S/s", sampleRate);
-
-        // Start stream
-        Pa_StartStream(devStream);
-
         running = true;
+        nullMode = false;
+        flog::info("Starting PortAudio stream at {0} S/s", sampleRate);
     }
 
     void stop() {
-        if (!running || selectedDevName.empty()) { return; }
-
-        // Send stop signal to the streams
-        packer.out.stopReader();
-        s2m.out.stopReader();
-
-        // Stop DSP
-        packer.stop();
-        s2m.stop();
-
-        // Stop stream
-        Pa_AbortStream(devStream);
-
-        // Close the stream
-        Pa_CloseStream(devStream);
-
+        if (!running) { return; }
+        if (nullMode) { nullSink->stop(); nullMode = false; }
+        else {
+            audioBuffer.stop();
+            Pa_AbortStream(devStream);
+            Pa_CloseStream(devStream);
+            devStream = nullptr;
+        }
         running = false;
     }
 
@@ -142,9 +108,11 @@ public:
         // Select device
         ImGui::SetNextItemWidth(menuWidth);
         if (ImGui::Combo("##audio_sink_dev_sel", &devId, deviceNamesTxt.c_str())) {
-            selectDevByName(deviceNames[devId]);
+            std::string device = deviceNames[devId];
+            bool restart = running;
             stop();
-            start();
+            selectDevByName(device);
+            if (restart) { start(); }
             if (selectedDevName != "") {
                 config.acquire();
                 config.conf[_streamName]["device"] = selectedDevName;
@@ -155,8 +123,9 @@ public:
         // Select sample rate
         ImGui::SetNextItemWidth(menuWidth);
         if (ImGui::Combo("##audio_sink_sr_sel", &srId, selectedDev.sampleRatesTxt.c_str())) {
+            bool restart = running;
             stop();
-            start();
+            if (restart) { start(); }
             if (selectedDevName != "") {
                 config.acquire();
                 config.conf[_streamName]["devices"][selectedDevName] = selectedDev.sampleRates[srId];
@@ -170,26 +139,14 @@ public:
     bool stereo = false;
 
 private:
-    static void playStateChangeHandler(bool newState, void* ctx) {
-        AudioSink* _this = (AudioSink*)ctx;
-
-        // Wake up reader to send nulls instead of data in preparation for shutoff
-        if (newState) {
-            if (_this->stereo) {
-                _this->packer.out.stopReader();
-            }
-            else {
-                _this->s2m.out.stopReader();
-            }
+    void startNullDrain() {
+        if (!nullSink) {
+            nullSink = std::make_unique<dsp::sink::Null<dsp::stereo_t>>();
+            nullSink->init(_stream->sinkOut);
         }
-        else {
-            if (_this->stereo) {
-                _this->packer.out.clearReadStop();
-            }
-            else {
-                _this->s2m.out.clearReadStop();
-            }
-        }
+        nullSink->start();
+        nullMode = true;
+        running = true;
     }
 
     void refreshDevices() {
@@ -331,36 +288,15 @@ private:
                         const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void* userData) {
         AudioSink* _this = (AudioSink*)userData;
 
-        // For OSX, mute audio when not playing
-        if (!gui::mainWindow.isPlaying()) {
-            memset(output, 0, frameCount * sizeof(float));
-            _this->s2m.out.flush();
-            return 0;
-        }
-
-        // Write to buffer
-        _this->s2m.out.read();
-        memcpy(output, _this->s2m.out.readBuf, frameCount * sizeof(float));
-        _this->s2m.out.flush();
-        return 0;
+        _this->audioBuffer.renderMono(static_cast<float*>(output), frameCount);
+        return paContinue;
     }
 
     static int _stereo_cb(const void* input, void* output, unsigned long frameCount,
                           const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags, void* userData) {
         AudioSink* _this = (AudioSink*)userData;
-
-        // For OSX, mute audio when not playing
-        if (!gui::mainWindow.isPlaying()) {
-            memset(output, 0, frameCount * sizeof(dsp::stereo_t));
-            _this->packer.out.flush();
-            return 0;
-        }
-
-        // Write to buffer
-        _this->packer.out.read();
-        memcpy(output, _this->packer.out.readBuf, frameCount * sizeof(dsp::stereo_t));
-        _this->packer.out.flush();
-        return 0;
+        _this->audioBuffer.renderStereo(static_cast<dsp::stereo_t*>(output), frameCount);
+        return paContinue;
     }
 
     std::string _streamName;
@@ -374,12 +310,10 @@ private:
     std::string selectedDevName;
 
     SinkManager::Stream* _stream;
-    dsp::buffer::Packer<dsp::stereo_t> packer;
-    dsp::convert::StereoToMono s2m;
-
-    PaStream* devStream;
-
-    EventHandler<bool> playStateHandler;
+    dsp::sink::AudioBuffer audioBuffer;
+    std::unique_ptr<dsp::sink::Null<dsp::stereo_t>> nullSink;
+    bool nullMode = false;
+    PaStream* devStream = nullptr;
 };
 
 class AudioSinkModule : public ModuleManager::Instance {

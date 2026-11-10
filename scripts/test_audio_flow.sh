@@ -13,6 +13,8 @@ if [ "$suite" = status ]; then
     TSAN_OPTIONS=halt_on_error=1 timeout --signal=TERM --kill-after=5 30s "$tmp/queue"
     "${CXX:-c++}" "${flags[@]}" -fsanitize=thread "$repo_root/tests/iq_frame_flow.cpp" -lvolk -pthread -o "$tmp/iq"
     TSAN_OPTIONS=halt_on_error=1 timeout --signal=TERM --kill-after=5 30s "$tmp/iq"
+    "${CXX:-c++}" "${flags[@]}" -fsanitize=thread "$repo_root/tests/rtl_control_flow.cpp" -lvolk -pthread -o "$tmp/rtl"
+    TSAN_OPTIONS=halt_on_error=1 timeout --signal=TERM --kill-after=5 30s "$tmp/rtl"
     exit 0
 fi
 export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0:quarantine_size_mb=32}"
@@ -20,6 +22,13 @@ export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0:quarantine_size_mb=32}"
 timeout --signal=TERM --kill-after=5 30s "$tmp/queue"
 "${CXX:-c++}" "${flags[@]}" -fsanitize=address,undefined -fno-sanitize-recover=all -no-pie "$repo_root/tests/iq_frame_flow.cpp" -lvolk -pthread -o "$tmp/iq"
 timeout --signal=TERM --kill-after=5 30s "$tmp/iq"
+"${CXX:-c++}" "${flags[@]}" -fsanitize=address,undefined -fno-sanitize-recover=all -no-pie "$repo_root/tests/rtl_control_flow.cpp" -lvolk -pthread -o "$tmp/rtl"
+timeout --signal=TERM --kill-after=5 30s "$tmp/rtl"
+rtl_include=$(sed -n 's|^rtlsdr_DIR:PATH=\(.*\)/lib/cmake/rtlsdr$|\1/include|p' "$build/CMakeCache.txt")
+test -f "$rtl_include/rtl-sdr.h"
+"${CXX:-c++}" "${flags[@]}" -I"$rtl_include" -fsanitize=address,undefined -fno-sanitize-recover=all -no-pie \
+    "$repo_root/tests/rtl_source_backend.cpp" -L"$build" -lsdrpp_full_core -lvolk -pthread -Wl,-rpath,"$build" -o "$tmp/rtl-source"
+timeout --signal=TERM --kill-after=5 20s "$tmp/rtl-source"
 for backend in rtaudio5 rtaudio6 portaudio; do
     extra=()
     if [ "$backend" = portaudio ]; then extra=(-DSDRPP_TEST_PORTAUDIO=1); fi

@@ -7,6 +7,7 @@
 #include <config.h>
 #include <gui/smgui.h>
 #include <rtl-sdr.h>
+#include "rtl_iq_buffer.h"
 
 #ifdef __ANDROID__
 #include <android_backend.h>
@@ -367,6 +368,7 @@ private:
 
         _this->asyncCount = (int)roundf(_this->sampleRate / (200 * 512)) * 512;
 
+        _this->iqBuffer.start(&_this->stream, _this->asyncCount);
         _this->workerThread = std::thread(&RTLSDRSourceModule::worker, _this);
 
         _this->running = true;
@@ -378,10 +380,14 @@ private:
         if (!_this->running) { return; }
         _this->running = false;
         _this->stream.stopWriter();
+        _this->iqBuffer.stop();
         rtlsdr_cancel_async(_this->openDev);
         if (_this->workerThread.joinable()) { _this->workerThread.join(); }
         _this->stream.clearWriteStop();
         rtlsdr_close(_this->openDev);
+        if (auto dropped = _this->iqBuffer.droppedPackets()) {
+            flog::warn("RTL-SDR: {0} IQ packets could not be processed in time", dropped);
+        }
 #ifdef __ANDROID__
         _this->androidUsbHandle.reset();
 #endif
@@ -584,12 +590,7 @@ private:
 
     static void asyncHandler(unsigned char* buf, uint32_t len, void* ctx) {
         RTLSDRSourceModule* _this = (RTLSDRSourceModule*)ctx;
-        int sampCount = len / 2;
-        for (int i = 0; i < sampCount; i++) {
-            _this->stream.writeBuf[i].re = ((float)buf[i * 2] - 127.4) / 128.0f;
-            _this->stream.writeBuf[i].im = ((float)buf[(i * 2) + 1] - 127.4) / 128.0f;
-        }
-        if (!_this->stream.swap(sampCount)) { return; }
+        _this->iqBuffer.push(buf, len);
     }
 
     void updateGainTxt() {
@@ -600,6 +601,7 @@ private:
     rtlsdr_dev_t* openDev;
     bool enabled = true;
     dsp::stream<dsp::complex_t> stream;
+    RTLSDRIQBuffer iqBuffer;
     double sampleRate;
     SourceManager::SourceHandler handler;
     bool running = false;

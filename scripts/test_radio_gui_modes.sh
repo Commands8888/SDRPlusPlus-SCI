@@ -63,7 +63,10 @@ grep -F 'OK: GUI workload' "$tmp/gui.log"
 grep -F 'OK: real-time audio sink consumed' "$tmp/gui.log"
 grep -F 'OK: active source stopped before controller teardown' "$tmp/gui.log"
 grep -F 'OK: GUI Radio and controller instances destroyed' "$tmp/gui.log"
-if [ "$variant" = nr ]; then grep -F 'OK: NR detached from deleted radios' "$tmp/gui.log"; fi
+if [ "$variant" = nr ]; then
+    grep -F 'OK: NR detached from deleted radios' "$tmp/gui.log"
+    grep -F 'OK: RTL-style GUI controls during NR/mode changes' "$tmp/gui.log"
+fi
 # Existing CW controls must survive the full round trip through every mode.
 python3 - "$tmp/config/radio_config.json" <<'PY'
 import json,sys

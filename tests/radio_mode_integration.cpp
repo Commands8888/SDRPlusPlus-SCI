@@ -6,6 +6,7 @@
 #include <signal_path/signal_path.h>
 #include <dsp/sink/handler_sink.h>
 #include <dsp/sink/audio_buffer.h>
+#include "../source_modules/rtl_sdr_source/src/rtl_iq_buffer.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <atomic>
@@ -114,6 +115,7 @@ public:
         if (!worker.joinable()) return;
         stopping = true;
         iq.stopWriter();
+        if (nrTest) rtlIngress.stop();
         worker.join();
         iq.clearWriteStop();
     }
@@ -128,16 +130,33 @@ private:
     void startIQ() {
         if (worker.joinable()) return;
         stopping = false;
+        if (nrTest) rtlIngress.start(&iq, 16384);
         worker = std::thread([this] {
             double phase = 0.0;
+            std::vector<unsigned char> raw(16384);
+            auto next = std::chrono::steady_clock::now();
             while (!stopping.load()) {
-                for (int i = 0; i < 8192; ++i) {
-                    phase += 0.02;
-                    if (phase > 6.283185307) phase -= 6.283185307;
-                    iq.writeBuf[i] = {0.4f * (float)std::cos(phase), 0.4f * (float)std::sin(phase)};
+                {
+                    // Model bulk callbacks and hardware controls sharing a USB
+                    // event context. Only the NR run uses production RTL ingress.
+                    std::lock_guard<std::mutex> event(usbEvents);
+                    for (int i = 0; i < 8192; ++i) {
+                        phase += 0.02;
+                        if (phase > 6.283185307) phase -= 6.283185307;
+                        if (nrTest) {
+                            raw[i*2] = 128 + int(50*std::cos(phase));
+                            raw[i*2+1] = 128 + int(50*std::sin(phase));
+                        }
+                        else iq.writeBuf[i] = {0.4f * (float)std::cos(phase), 0.4f * (float)std::sin(phase)};
+                    }
+                    if (nrTest) rtlIngress.push(raw.data(), raw.size());
+                    else if (!iq.swap(8192)) break;
                 }
-                if (!iq.swap(8192)) break;
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                if (nrTest) {
+                    next += std::chrono::nanoseconds(3413333); // 8192 IQ at 2.4 MHz.
+                    std::this_thread::sleep_until(next);
+                }
+                else std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
         });
     }
@@ -193,6 +212,13 @@ private:
             if (!audioBuffers.load()) fail("Radio produced no audio buffers");
             if (!deviceFrames.load()) fail("simulated audio device received no frames");
             std::printf("OK: real-time audio sink consumed %llu frames during mode/rate changes\n",(unsigned long long)deviceFrames.load());
+            if (nrTest) {
+                std::sort(controlLatencies.begin(), controlLatencies.end());
+                std::printf("OK: RTL-style GUI controls during NR/mode changes; count=%zu p95=%lld us max=%lld us; overload packets=%llu\n",
+                    controlLatencies.size(), controlLatencies[controlLatencies.size()*95/100], controlLatencies.back(),
+                    (unsigned long long)rtlIngress.droppedPackets());
+                if (controlLatencies.back() > 100000) fail("USB-style control stalled the GUI for over 100 ms");
+            }
             std::sort(latencies.begin(), latencies.end());
             std::printf("OK: GUI RadioModule all 110 directed pairs %s; %zu switches; %d audio buffers; p95=%lld us max=%lld us; RSS warm=%ld KB final=%ld KB\n",
                 nrTest ? "with Noise Reduction" : "four times", position, audioBuffers.load(), latencies[latencies.size() * 95 / 100], latencies.back(), warmRSS, rssKB());
@@ -213,6 +239,11 @@ private:
             nr->disable(); nr->enable();
         }
         int mode = sequence[position];
+        if (nrTest) {
+            auto begin = std::chrono::steady_clock::now();
+            { std::lock_guard<std::mutex> command(usbEvents); }
+            controlLatencies.push_back(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-begin).count());
+        }
         auto begin = std::chrono::steady_clock::now();
         if (!core::modComManager.callInterface("Radio", RADIO_IFACE_CMD_SET_MODE, &mode, nullptr)) fail("mode command failed");
         int selected = -1;
@@ -238,6 +269,9 @@ private:
     SinkManager::Stream* audioStream = nullptr;
     dsp::sink::Handler<dsp::stereo_t> audio;
     std::thread worker;
+    RTLSDRIQBuffer rtlIngress;
+    std::mutex usbEvents;
+    std::vector<long long> controlLatencies;
     std::vector<int> sequence;
     std::vector<long long> latencies;
     size_t position = 0;

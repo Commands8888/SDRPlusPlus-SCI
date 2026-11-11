@@ -28,6 +28,14 @@ para 1.600 frames (16,7 para 33,3 ms). Esse é o custo explícito de margem cont
 jitter; a fila mantém tamanho fixo. PCM, ganho, banda e decodificadores não são
 modificados. A entrada RTL da 1.7.11 permanece assíncrona e sem espera pelo DSP.
 
+O backend PulseAudio do RtAudio recebe também um pedido explícito de dois
+períodos no buffer nativo. Na versão 5.2.0 usada no Noble, esse backend usa
+`numberOfBuffers` para limitar `pa_buffer_attr.maxlength`; somente a flag
+`MINIMIZE_LATENCY` deixa os atributos padrão do servidor. O ajuste evita que
+um buffer nativo muito maior desalinhe o atendimento da FIFO do aplicativo.
+ALSA e os demais backends mantêm suas opções anteriores. Referência primária:
+[RtAudio 5.2.0](https://github.com/thestk/rtaudio/blob/5.2.0/RtAudio.cpp), `RtApiPulse::probeDeviceOpen`.
+
 ## FFT e escopo
 
 Áudio, VFO e FFT compartilham o splitter de IQ. Esperas e vazão irregular no
@@ -56,6 +64,7 @@ bash scripts/test_radio_gui_modes.sh build continuity
 - Os sinks reais RtAudio 5/6 e PortAudio são exercitados com APIs simuladas,
   incluindo quatro callbacks consecutivos, mono/estéreo, falta de dispositivo
   e falhas de abertura/start/stop. O callback continua sem alocar memória.
+  Os testes RtAudio verificam também o pedido explícito de dois períodos no PulseAudio.
 - A integração gráfica existente mantém as 880 seleções normais e 220 com NR,
   alterações de taxa de áudio e comandos concorrentes com o contexto USB.
 - O cenário adicional mantém cada um dos onze modos por um intervalo fixo,

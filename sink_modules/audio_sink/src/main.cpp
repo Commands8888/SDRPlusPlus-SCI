@@ -229,6 +229,9 @@ private:
         RtAudio::StreamOptions opts;
         opts.flags = RTAUDIO_MINIMIZE_LATENCY;
         opts.streamName = _streamName;
+        // PulseAudio uses numberOfBuffers to bound its server buffer;
+        // MINIMIZE_LATENCY alone leaves that backend's server defaults active.
+        if (audio.getCurrentApi() == RtAudio::LINUX_PULSE) { opts.numberOfBuffers = 2; }
 
         try {
             audio.openStream(&parameters, NULL, RTAUDIO_FLOAT32, sampleRate, &bufferFrames, &callback, this, &opts);

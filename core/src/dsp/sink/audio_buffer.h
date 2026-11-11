@@ -17,12 +17,15 @@ namespace dsp::sink {
 
         void configure(unsigned sampleRate, unsigned deviceFrames) {
             assert(!running && sampleRate && deviceFrames);
-            const uint32_t wanted = std::max<uint32_t>(deviceFrames * 2, sampleRate / 50);
+            // Linux backends can request several negotiated periods in a
+            // single wakeup. Two periods cannot cover a four-period burst:
+            // every burst would insert silence even at the correct mean rate.
+            const uint32_t wanted = std::max<uint32_t>(deviceFrames * 4, sampleRate / 20);
             uint32_t capacity = 1;
             while (capacity < wanted && capacity < STREAM_BUFFER_SIZE) { capacity <<= 1; }
             storage.resize(capacity);
             mask = capacity - 1;
-            primeFrames = std::min<uint32_t>(capacity / 2, std::max<uint32_t>(deviceFrames, sampleRate / 100));
+            primeFrames = std::min<uint32_t>(capacity / 2, std::max<uint32_t>(deviceFrames * 2, sampleRate / 50));
         }
 
         uint32_t capacity() const { return storage.size(); }
@@ -91,8 +94,8 @@ namespace dsp::sink {
             if (!active.load(std::memory_order_acquire)) { return 0; }
             uint32_t tail = consumed.load(std::memory_order_relaxed);
             uint32_t available = written.load(std::memory_order_acquire) - tail;
-            // One device period of headroom (at least 10 ms when capacity
-            // permits) absorbs normal DSP scheduling jitter. No startup sleep.
+            // Two periods of headroom absorb scheduling jitter without
+            // waiting on the native callback or delaying the GUI startup.
             if (!available) {
                 if (primed) { shortReads.fetch_add(1, std::memory_order_relaxed); }
                 primed = false;

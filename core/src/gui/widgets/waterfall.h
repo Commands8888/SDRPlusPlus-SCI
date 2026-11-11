@@ -90,6 +90,7 @@ namespace ImGui {
         void draw();
         float* getFFTBuffer();
         void pushFFT();
+        int getFFTFrameIndex();
 
         void updatePallette(float colors[][3], int colorCount);
         void updatePalletteFromArray(float* colors, int colorCount);

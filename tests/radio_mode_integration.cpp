@@ -24,6 +24,7 @@
 SDRPP_MOD_INFO{"mode_integration", "Radio mode integration test", "SDRPP-FULL tests", 1, 0, 0, 1};
 
 static std::atomic<uint64_t> deviceFrames { 0 };
+static std::atomic<uint64_t> deviceMissingFrames { 0 };
 class SimulatedAudioSink : public SinkManager::Sink {
 public:
     SimulatedAudioSink(SinkManager::Stream* stream) : stream(stream),rate(stream->getSampleRate()) {
@@ -40,17 +41,22 @@ public:
     ~SimulatedAudioSink() override { stop();stream->srChange.unbindHandler(&rateHandler); }
     void start() override {
         if(running) return;
-        unsigned frames=rate/100;
+        const bool burstTest=std::getenv("SDRPP_TEST_CONTINUITY")!=nullptr;
+        unsigned frames=burstTest?rate/60:rate/100;
         buffer.configure(rate,frames);buffer.start();
         stopping=false;running=true;
-        device=std::thread([this,frames] {
+        device=std::thread([this,frames,burstTest] {
             std::vector<dsp::stereo_t> out(frames);
             auto next=std::chrono::steady_clock::now();
             while(!stopping.load()) {
-                unsigned got=buffer.renderStereo(out.data(),frames);
-                deviceFrames+=got;
-                for(auto x:out) if(!std::isfinite(x.l)||!std::isfinite(x.r)) std::abort();
-                next+=std::chrono::milliseconds(10);
+                const unsigned batch=burstTest?4:1;
+                for(unsigned period=0;period<batch;++period) {
+                    unsigned got=buffer.renderStereo(out.data(),frames);
+                    deviceFrames+=got;
+                    deviceMissingFrames+=frames-got;
+                    for(auto x:out) if(!std::isfinite(x.l)||!std::isfinite(x.r)) std::abort();
+                }
+                next+=std::chrono::nanoseconds(uint64_t(frames)*batch*1000000000/rate);
                 std::this_thread::sleep_until(next);
             }
         });
@@ -95,7 +101,9 @@ public:
         gui::mainWindow.onFrameDraw.bindHandler(&frames);
         const int ids[] = {0, 1, 2, 3, 7, 6, 4, 5, 8, 0x1301, 0x1302};
         nrTest = std::getenv("SDRPP_TEST_NR") != nullptr;
-        for (int round = 0; round < (nrTest ? 1 : 4); ++round)
+        continuityTest=std::getenv("SDRPP_TEST_CONTINUITY")!=nullptr;
+        if(continuityTest) sequence.assign(std::begin(ids),std::end(ids));
+        else for (int round = 0; round < (nrTest ? 1 : 4); ++round)
             for (int from : ids)
                 for (int to : ids)
                     if (from != to) { sequence.push_back(from); sequence.push_back(to); }
@@ -171,6 +179,53 @@ private:
         std::fflush(stderr);
         std::_Exit(2);
     }
+    void checkContinuity() {
+        using Clock=std::chrono::steady_clock;
+        const auto now=Clock::now();
+        if(!qualityConfigured) {
+            if(position==sequence.size()) {
+                std::printf("OK: GUI continuity checked nine analog modes for inserted silence and eleven modes for FFT/control liveness with 2.4 MHz NR and four-period audio bursts\n");
+                finished=true;
+                glfwSetWindowShouldClose(glfwGetCurrentContext(),GLFW_TRUE);
+                return;
+            }
+            int mode=sequence[position];
+            auto begin=Clock::now();
+            { std::lock_guard<std::mutex> command(usbEvents); }
+            if(Clock::now()-begin>std::chrono::milliseconds(100)) fail("USB-style control stalled during continuity test");
+            if(!core::modComManager.callInterface("Radio",RADIO_IFACE_CMD_SET_MODE,&mode,nullptr)) fail("continuity mode command failed");
+            qualityModeAt=Clock::now();
+            qualityConfigured=true;qualityCollecting=false;
+            return;
+        }
+        if(now-qualityModeAt<std::chrono::milliseconds(600)) return;
+        auto fft=gui::waterfall.getFFTFrameIndex();
+        if(!qualityCollecting) {
+            qualityFrames=deviceFrames.load();qualityMissing=deviceMissingFrames.load();
+            qualityFFT=0;lastQualityFFT=fft;qualityDropped=rtlIngress.droppedPackets();
+            qualityAt=lastQualityFFTAt=now;qualityMaxFFTGap=0;qualityCollecting=true;
+            return;
+        }
+        if(fft!=lastQualityFFT) {
+            ++qualityFFT;
+            auto gap=std::chrono::duration_cast<std::chrono::microseconds>(now-lastQualityFFTAt).count();
+            qualityMaxFFTGap=std::max<long long>(qualityMaxFFTGap,gap);
+            lastQualityFFT=fft;lastQualityFFTAt=now;
+        }
+        if(now-qualityAt<std::chrono::milliseconds(600)) return;
+        auto frames=deviceFrames.load()-qualityFrames;
+        auto missing=deviceMissingFrames.load()-qualityMissing;
+        auto dropped=rtlIngress.droppedPackets()-qualityDropped;
+        std::printf("GUI continuity mode=%d audio frames=%llu missing=%llu FFT frames=%llu maximum FFT gap=%lld us IQ drops=%llu\n",sequence[position],
+            (unsigned long long)frames,(unsigned long long)missing,(unsigned long long)qualityFFT,qualityMaxFFTGap,(unsigned long long)dropped);
+        std::fflush(stdout);
+        // With a non-digital input DSD/oldDSD need not synthesize speech. Their
+        // source, controls and FFT must keep running while the decoder waits.
+        if(sequence[position]<0x1300 && (!frames || missing)) fail("inserted silence during steady analog playback");
+        if(qualityFFT<3 || qualityMaxFFTGap>200000 || now-lastQualityFFTAt>std::chrono::milliseconds(200)) fail("FFT publication stalled during playback");
+        if(dropped) fail("IQ packet loss during steady continuity test");
+        ++position;qualityConfigured=false;
+    }
     void frame() {
         if (finished) return;
         if (!started) {
@@ -201,6 +256,7 @@ private:
             cpuAtStart = std::clock();
             started = true;
         }
+        if(continuityTest) { checkContinuity();return; }
         // Let the actual UI/status drawing and DSP pipeline run between changes.
         if (++waitFrames < 3) return;
         waitFrames = 0;
@@ -279,6 +335,10 @@ private:
     long warmRSS = 0;
     bool started = false, finished = false;
     bool nrTest = false;
+    bool continuityTest=false,qualityConfigured=false,qualityCollecting=false;
+    uint64_t qualityFrames=0,qualityMissing=0,qualityFFT=0,lastQualityFFT=0,qualityDropped=0;
+    long long qualityMaxFFTGap=0;
+    std::chrono::steady_clock::time_point qualityModeAt,qualityAt,lastQualityFFTAt;
     std::chrono::steady_clock::time_point startedAt;
     std::clock_t cpuAtStart = 0;
 };

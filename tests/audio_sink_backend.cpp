@@ -92,6 +92,32 @@ int main() {
                     std::this_thread::sleep_for(std::chrono::microseconds(100));
                 }
                 render(800);
+                // A native backend may service several periods on one wake.
+                // Correct sample order alone must not hide inserted silence.
+                std::atomic<bool> done{false};
+                std::thread producer([&] {
+                    auto next=std::chrono::steady_clock::now();
+                    while(!done.load()) {
+                        for(int i=0;i<240;++i) input.writeBuf[i]={0.25f,0.5f};
+                        if(!input.swap(240)) break;
+                        next+=std::chrono::milliseconds(5);
+                        std::this_thread::sleep_until(next);
+                    }
+                });
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                auto next=std::chrono::steady_clock::now();
+                for(int cycle=0;cycle<8;++cycle) {
+                    for(int callback=0;callback<4;++callback) {
+                        render(800);
+                        for(int i=0;i<800;++i) {
+                            if(fakeChannels==1) assert(mono[i]==0.375f);
+                            else assert(stereo[i].l==0.25f && stereo[i].r==0.5f);
+                        }
+                    }
+                    next+=std::chrono::nanoseconds(66666667);
+                    std::this_thread::sleep_until(next);
+                }
+                done=true;input.stopWriter();producer.join();input.clearWriteStop();
             } else {
                 // Failed/native-missing output must still drain the shared
                 // DSP splitter instead of freezing reception and the FFT.
@@ -104,4 +130,5 @@ int main() {
         assert(fakeOpenCount==0);
     }
     std::puts("OK: native audio sink handles empty/variable callbacks, mono/stereo, missing device and open/start failures without blocking or leaking a stream");
+    std::puts("OK: native mono/stereo callback bursts play continuously without inserted silence");
 }

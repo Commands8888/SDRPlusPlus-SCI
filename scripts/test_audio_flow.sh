@@ -11,6 +11,8 @@ flags=(-std=c++17 -O1 -g -fvisibility=hidden -fno-omit-frame-pointer -I"$repo_ro
 if [ "$suite" = status ]; then
     "${CXX:-c++}" "${flags[@]}" -fsanitize=thread "$repo_root/tests/audio_buffer_flow.cpp" -lvolk -pthread -o "$tmp/queue"
     TSAN_OPTIONS=halt_on_error=1 timeout --signal=TERM --kill-after=5 30s "$tmp/queue"
+    "${CXX:-c++}" "${flags[@]}" -fsanitize=thread "$repo_root/tests/audio_clock_flow.cpp" -lvolk -pthread -o "$tmp/clock"
+    TSAN_OPTIONS=halt_on_error=1 timeout --signal=TERM --kill-after=5 30s "$tmp/clock"
     "${CXX:-c++}" "${flags[@]}" -fsanitize=thread "$repo_root/tests/iq_frame_flow.cpp" -lvolk -pthread -o "$tmp/iq"
     TSAN_OPTIONS=halt_on_error=1 timeout --signal=TERM --kill-after=5 30s "$tmp/iq"
     "${CXX:-c++}" "${flags[@]}" -fsanitize=thread "$repo_root/tests/rtl_control_flow.cpp" -lvolk -pthread -o "$tmp/rtl"
@@ -20,6 +22,8 @@ fi
 export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0:quarantine_size_mb=32}"
 "${CXX:-c++}" "${flags[@]}" -DSDRPP_AUDIO_TRACK_ALLOCATIONS=1 -fsanitize=address,undefined -fno-sanitize-recover=all -no-pie "$repo_root/tests/audio_buffer_flow.cpp" -lvolk -pthread -o "$tmp/queue"
 timeout --signal=TERM --kill-after=5 30s "$tmp/queue"
+"${CXX:-c++}" "${flags[@]}" -fsanitize=address,undefined -fno-sanitize-recover=all -no-pie "$repo_root/tests/audio_clock_flow.cpp" -lvolk -pthread -o "$tmp/clock"
+timeout --signal=TERM --kill-after=5 30s "$tmp/clock"
 "${CXX:-c++}" "${flags[@]}" -fsanitize=address,undefined -fno-sanitize-recover=all -no-pie "$repo_root/tests/iq_frame_flow.cpp" -lvolk -pthread -o "$tmp/iq"
 timeout --signal=TERM --kill-after=5 30s "$tmp/iq"
 "${CXX:-c++}" "${flags[@]}" -fsanitize=address,undefined -fno-sanitize-recover=all -no-pie "$repo_root/tests/rtl_control_flow.cpp" -lvolk -pthread -o "$tmp/rtl"

@@ -1163,6 +1163,11 @@ namespace ImGui {
         buf_mtx.unlock();
     }
 
+    int WaterFall::getFFTFrameIndex() {
+        std::lock_guard<std::recursive_mutex> lock(buf_mtx);
+        return currentFFTLine;
+    }
+
     void WaterFall::updatePallette(float colors[][3], int colorCount) {
         std::lock_guard<std::recursive_mutex> lck(buf_mtx);
         for (int i = 0; i < WATERFALL_RESOLUTION; i++) {

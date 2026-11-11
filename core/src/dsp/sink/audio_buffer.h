@@ -17,15 +17,16 @@ namespace dsp::sink {
 
         void configure(unsigned sampleRate, unsigned deviceFrames) {
             assert(!running && sampleRate && deviceFrames);
-            // Linux backends can request several negotiated periods in a
-            // single wakeup. Two periods cannot cover a four-period burst:
-            // every burst would insert silence even at the correct mean rate.
-            const uint32_t wanted = std::max<uint32_t>(deviceFrames * 4, sampleRate / 20);
+            // Accommodate a device burst plus block-oriented DSP delivery.
+            // Storage is fixed before callbacks start; priming below follows
+            // the actual packet size rather than waiting for all this space.
+            const uint64_t burst = uint64_t(deviceFrames) * 4;
+            const uint64_t wanted = burst + sampleRate / 8;
             uint32_t capacity = 1;
             while (capacity < wanted && capacity < STREAM_BUFFER_SIZE) { capacity <<= 1; }
             storage.resize(capacity);
             mask = capacity - 1;
-            primeFrames = std::min<uint32_t>(capacity / 2, std::max<uint32_t>(deviceFrames * 2, sampleRate / 50));
+            primeFrames = std::min<uint64_t>(capacity, std::max<uint64_t>(burst, sampleRate / 50));
         }
 
         uint32_t capacity() const { return storage.size(); }
@@ -42,6 +43,7 @@ namespace dsp::sink {
         int run() override {
             int count = _in->read();
             if (count < 0) { return -1; }
+            packetFrames.store(count, std::memory_order_relaxed);
             int offset = 0;
             while (offset < count && active.load(std::memory_order_acquire)) {
                 uint32_t head = written.load(std::memory_order_relaxed);
@@ -73,6 +75,7 @@ namespace dsp::sink {
             written.store(0, std::memory_order_relaxed);
             consumed.store(0, std::memory_order_relaxed);
             shortReads.store(0, std::memory_order_relaxed);
+            packetFrames.store(0, std::memory_order_relaxed);
             primed = false;
             primeWait = 0;
             active.store(true, std::memory_order_release);
@@ -94,18 +97,21 @@ namespace dsp::sink {
             if (!active.load(std::memory_order_acquire)) { return 0; }
             uint32_t tail = consumed.load(std::memory_order_relaxed);
             uint32_t available = written.load(std::memory_order_acquire) - tail;
-            // Two periods of headroom absorb scheduling jitter without
-            // waiting on the native callback or delaying the GUI startup.
+            // Block-based DSP can wait for a long input packet (OMLSA uses
+            // 4608 samples at 48 kHz). Reserve that packet plus a device burst
+            // before playing, so the next packet can arrive without a gap.
+            const uint32_t reserve = std::min<uint64_t>(capacity(),
+                uint64_t(primeFrames) + packetFrames.load(std::memory_order_relaxed));
             if (!available) {
                 if (primed) { shortReads.fetch_add(1, std::memory_order_relaxed); }
                 primed = false;
                 primeWait = 0;
                 return 0;
             }
-            if (!primed && available < primeFrames) {
+            if (!primed && available < reserve) {
                 // A final short packet must still play if no more data arrives.
-                if (primeWait < primeFrames) {
-                    primeWait = std::min<uint32_t>(primeFrames, primeWait + frames);
+                if (primeWait < reserve) {
+                    primeWait = std::min<uint32_t>(reserve, primeWait + frames);
                     return 0;
                 }
             }
@@ -139,6 +145,7 @@ namespace dsp::sink {
         alignas(64) std::atomic<uint32_t> written { 0 };
         alignas(64) std::atomic<uint32_t> consumed { 0 };
         std::atomic<uint64_t> shortReads { 0 };
+        std::atomic<uint32_t> packetFrames { 0 };
         std::atomic<bool> active { false };
         bool primed = false; // callback-owned until the device is stopped
         std::mutex waitMutex;

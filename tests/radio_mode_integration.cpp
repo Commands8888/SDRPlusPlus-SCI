@@ -202,6 +202,7 @@ private:
         auto fft=gui::waterfall.getFFTFrameIndex();
         if(!qualityCollecting) {
             qualityFrames=deviceFrames.load();qualityMissing=deviceMissingFrames.load();
+            audioPacketMax=0;
             qualityFFT=0;lastQualityFFT=fft;qualityDropped=rtlIngress.droppedPackets();
             qualityAt=lastQualityFFTAt=now;qualityMaxFFTGap=0;qualityCollecting=true;
             return;
@@ -212,12 +213,12 @@ private:
             qualityMaxFFTGap=std::max<long long>(qualityMaxFFTGap,gap);
             lastQualityFFT=fft;lastQualityFFTAt=now;
         }
-        if(now-qualityAt<std::chrono::milliseconds(600)) return;
+        if(now-qualityAt<std::chrono::milliseconds(2500)) return;
         auto frames=deviceFrames.load()-qualityFrames;
         auto missing=deviceMissingFrames.load()-qualityMissing;
         auto dropped=rtlIngress.droppedPackets()-qualityDropped;
-        std::printf("GUI continuity mode=%d audio frames=%llu missing=%llu FFT frames=%llu maximum FFT gap=%lld us IQ drops=%llu\n",sequence[position],
-            (unsigned long long)frames,(unsigned long long)missing,(unsigned long long)qualityFFT,qualityMaxFFTGap,(unsigned long long)dropped);
+        std::printf("GUI continuity mode=%d audio frames=%llu missing=%llu FFT frames=%llu maximum FFT gap=%lld us IQ drops=%llu largest audio packet=%u\n",sequence[position],
+            (unsigned long long)frames,(unsigned long long)missing,(unsigned long long)qualityFFT,qualityMaxFFTGap,(unsigned long long)dropped,audioPacketMax.load());
         std::fflush(stdout);
         // With a non-digital input DSD/oldDSD need not synthesize speech. Their
         // source, controls and FFT must keep running while the decoder waits.
@@ -249,6 +250,8 @@ private:
                 for (int i = 0; i < count; ++i)
                     if (!std::isfinite(data[i].l) || !std::isfinite(data[i].r)) self->invalidAudio = true;
                 self->audioBuffers++;
+                unsigned largest=self->audioPacketMax.load();
+                while(unsigned(count)>largest && !self->audioPacketMax.compare_exchange_weak(largest,unsigned(count))) {}
             }, this);
             audio.start();
             gui::mainWindow.setPlayState(true);
@@ -321,6 +324,7 @@ private:
     std::atomic<bool> stopping{false};
     std::atomic<bool> invalidAudio{false};
     std::atomic<int> audioBuffers{0};
+    std::atomic<unsigned> audioPacketMax{0};
     dsp::stream<dsp::stereo_t>* audioInput = nullptr;
     SinkManager::Stream* audioStream = nullptr;
     dsp::sink::Handler<dsp::stereo_t> audio;

@@ -26,7 +26,7 @@ int main() {
             dsp::sink::AudioBuffer audio;
             audio.init(&input);
             audio.configure(rate,rate/60);
-            assert(audio.capacity() <= 8192); // bounded milliseconds, not seconds
+            assert(audio.capacity() <= rate/2); // fixed, bounded subsecond storage
             std::vector<dsp::stereo_t> stereo(4096);
             std::vector<float> single(4096);
             audio.start();
@@ -79,8 +79,10 @@ int main() {
             // indices, including a stop while the bounded producer is full.
             audio.configure(48000,800);
             audio.start();
-            std::fill_n(input.writeBuf,16384,dsp::stereo_t{7,9});
-            assert(input.swap(16384));
+            const int pending=audio.capacity()*2;
+            assert(pending<STREAM_BUFFER_SIZE);
+            std::fill_n(input.writeBuf,pending,dsp::stereo_t{7,9});
+            assert(input.swap(pending));
             auto limit=std::chrono::steady_clock::now()+std::chrono::seconds(1);
             while(audio.queued()<audio.capacity()) {
                 assert(std::chrono::steady_clock::now()<limit);

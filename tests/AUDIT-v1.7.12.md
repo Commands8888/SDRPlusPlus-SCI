@@ -1,51 +1,53 @@
 # SDRPP-FULL v1.7.12 — continuidade do áudio e cadência do FFT
 
 Base: `abd4e614cc21ab4a651a32b6b6f44176107ada59` (v1.7.11).
-Correção dirigida ao áudio intermitente em todos os modos, preservando a
-resposta de ganho/AGC, a troca de modos e os cálculos do LogMMSE.
+Correção do áudio intermitente, preservando ganho/AGC, troca de modos e NR.
 
-## Reprodução e correção
+## Causa reproduzida
 
-A FIFO de saída comportava aproximadamente dois períodos do dispositivo.
-Um backend que atende vários períodos no mesmo despertar pode pedir mais
-amostras do que essa reserva comporta, apesar de manter a taxa média correta.
-O callback então insere silêncio. Os testes anteriores aceitavam esse silêncio
-se as amostras recebidas continuassem em ordem, deixando passar cortes audíveis.
+A saída iniciava com uma reserva dimensionada só pelo período do dispositivo,
+sem cobrir os blocos entregues pelo processamento. O Audio NR2, por exemplo,
+publica blocos de até 4.608 frames em 48 kHz (96 ms). Callbacks agrupados podem
+consumir a reserva antes do próximo bloco e inserir silêncio. Os testes
+anteriores aceitavam esse silêncio se as amostras mantivessem a ordem.
 
-A reprodução local, com 48 kHz, períodos de 800 frames e quatro callbacks por
-ciclo de 66,7 ms, mostrou 44 callbacks incompletos e 25.344 frames de silêncio
-no trecho observado da implementação anterior. Com a reserva corrigida, o
-mesmo ensaio terminou com zero callbacks incompletos e zero frames ausentes.
+Com 48 kHz/800 frames e quatro callbacks por ciclo de 66,7 ms, a implementação
+anterior apresentou 44 callbacks incompletos e 25.344 frames de silêncio no
+trecho observado. O teste conjunto de modos também identificou cortes residuais
+quando a preparação não considerava o tamanho dos blocos do NR.
 
-A capacidade passa a cobrir quatro períodos, com mínimo de 50 ms, arredondada
-para potência de dois. A reserva inicial cobre dois períodos, com mínimo de
-20 ms e limite de metade da capacidade. Não existe espera da GUI nem espera
-pelo DSP dentro do callback nativo; o preenchimento continua na thread produtora.
+## Política de saída
 
-No exemplo de 48 kHz/800 frames, a capacidade passa de 2.048 para 4.096 frames
-(42,7 para 85,3 ms), com mais 16 KiB por saída. A reserva inicial passa de 800
-para 1.600 frames (16,7 para 33,3 ms). Esse é o custo explícito de margem contra
-jitter; a fila mantém tamanho fixo. PCM, ganho, banda e decodificadores não são
-modificados. A entrada RTL da 1.7.11 permanece assíncrona e sem espera pelo DSP.
+- O produtor observa o tamanho do pacote PCM recebido, sem modificar amostras.
+- Ao começar ou recuperar a reprodução, a reserva considera esse pacote e uma
+  rajada de quatro períodos do dispositivo, limitada ao armazenamento disponível.
+- O armazenamento é pré-alocado: quatro períodos mais 125 ms de margem,
+  arredondados para potência de dois. Não cresce durante a reprodução.
+- O callback nativo continua sem esperar pelo DSP, sem alocar memória e sem
+  acessar estado da GUI. Pacotes curtos finitos mantêm entrega após espera limitada.
 
-O backend PulseAudio do RtAudio recebe também um pedido explícito de dois
-períodos no buffer nativo. Na versão 5.2.0 usada no Noble, esse backend usa
-`numberOfBuffers` para limitar `pa_buffer_attr.maxlength`; somente a flag
-`MINIMIZE_LATENCY` deixa os atributos padrão do servidor. O ajuste evita que
-um buffer nativo muito maior desalinhe o atendimento da FIFO do aplicativo.
-ALSA e os demais backends mantêm suas opções anteriores. Referência primária:
-[RtAudio 5.2.0](https://github.com/thestk/rtaudio/blob/5.2.0/RtAudio.cpp), `RtApiPulse::probeDeviceOpen`.
+Em 48 kHz/800 frames, o armazenamento é de 16.384 frames (128 KiB): mais
+112 KiB por saída em relação à 1.7.11. Capacidade não é uma espera obrigatória:
+com um pacote de 480 frames, a preparação é de 3.680 frames (76,7 ms); com o
+bloco NR de 4.608 frames, é de 7.808 frames (162,7 ms). Essa margem cobre a
+entrega em blocos sem reduzir a janela ou alterar os cálculos do NR.
 
-## FFT e escopo
+O RtAudio/PulseAudio recebe um pedido explícito de dois períodos no buffer
+nativo. No RtAudio 5.2.0 do Noble, `numberOfBuffers` limita
+`pa_buffer_attr.maxlength`; somente `MINIMIZE_LATENCY` deixa os padrões do
+servidor nesse backend. ALSA e os demais backends mantêm suas opções anteriores.
+Referência: [RtAudio 5.2.0](https://github.com/thestk/rtaudio/blob/5.2.0/RtAudio.cpp),
+`RtApiPulse::probeDeviceOpen`.
 
-Áudio, VFO e FFT compartilham o splitter de IQ. Esperas e vazão irregular no
-áudio podem afetar a entrega ao FFT; por isso o ensaio gráfico observa ambos
-juntos, com entrada de 2,4 MHz, NR e dispositivo atendendo quatro períodos.
+O caminho assíncrono RTL da 1.7.11 permanece intacto. A biblioteca RTL privada,
+faixa de ganho, filtros, banda, protocolos e cálculos DSP não foram alterados.
 
-Foi acrescentada somente uma leitura protegida do índice de quadros FFT já
-existente, sem novo estado ou buffer, para observar a cadência no teste. Tamanho/janelas da FFT,
-smoothing, desenho, waterfall, colormaps, temas e bandplans permanecem iguais.
-Essa leitura não modifica amostras ou parâmetros gráficos.
+## FFT
+
+O splitter de IQ é compartilhado por áudio, VFO e FFT; a cadência é observada
+junto com a continuidade do áudio. Foi acrescentada apenas uma leitura protegida
+do índice de quadros já existente, sem novo estado ou buffer gráfico. Tamanho,
+janelas, smoothing, desenho, waterfall, colormaps e bandplans permanecem iguais.
 
 ## Verificação
 
@@ -57,25 +59,23 @@ bash scripts/test_radio_gui_modes.sh build nr
 bash scripts/test_radio_gui_modes.sh build continuity
 ```
 
-- ASan/UBSan e TSan locais passaram no fluxo de áudio/IQ e na entrada RTL.
-- A nova matriz de relógio cobre 44,1/48/96 kHz, mono/estéreo e atendimento de
-  1/2/4 períodos por ciclo. Exige zero silêncio inserido no trecho estável e
-  a sequência PCM exata, sem reordenar, repetir ou interpolar amostras.
-- Os sinks reais RtAudio 5/6 e PortAudio são exercitados com APIs simuladas,
-  incluindo quatro callbacks consecutivos, mono/estéreo, falta de dispositivo
-  e falhas de abertura/start/stop. O callback continua sem alocar memória.
-  Os testes RtAudio verificam também o pedido explícito de dois períodos no PulseAudio.
-- A integração gráfica existente mantém as 880 seleções normais e 220 com NR,
-  alterações de taxa de áudio e comandos concorrentes com o contexto USB.
-- O cenário adicional mantém cada um dos onze modos por um intervalo fixo,
-  separando aquecimento e medição. Exige continuidade PCM nos nove modos
-  analógicos e acompanha FFT, comandos e perda de IQ em todos os onze modos.
-- DSD/oldDSD recebem um sinal sintético sem quadros digitais válidos: não se
-  exige fala decodificada nesse cenário. Os testes próprios dos decodificadores
-  continuam ativos. Não se trata de validação de protocolos com rádio físico.
-- A matriz de empacotamento conserva os oráculos numéricos do NR, verificações
-  de AGC/filtros, abertura/reabertura/encerramento e isolamento da RTL privada.
+- Build Noble e ASan/UBSan/TSan locais passaram nos fluxos de áudio/IQ/RTL.
+- Relógio independente em mono/estéreo, 8/16/24/44,1/48/96 kHz, pacotes curtos
+  ou do tamanho usado pelo NR e atendimento de 1/2/4 períodos: zero silêncio
+  inserido após começar a entrega contínua; sequência PCM exata.
+- Sinks reais RtAudio 5/6 e PortAudio com APIs simuladas: quatro callbacks
+  consecutivos, mono/estéreo, falta de dispositivo e erros de open/start/stop.
+  Verificam também a configuração do PulseAudio e ausência de alocações no callback.
+- Permanecem as 880 seleções normais e 220 com NR, taxas de áudio diferentes
+  e comandos concorrentes com o contexto USB.
+- O cenário conjunto usa IQ de 2,4 MHz com NR, aquece cada modo e mede mais
+  2,5 segundos: exige continuidade PCM nos nove modos analógicos e acompanha
+  FFT, comandos e perda de IQ nos onze modos. Registra os tamanhos dos pacotes.
+- DSD/oldDSD recebem sinal sintético sem quadros digitais válidos: não se exige
+  fala decodificada nesse cenário. Seus testes próprios permanecem ativos.
+- A matriz conserva oráculos numéricos do NR, AGC/filtros, ciclo de vida dos
+  pacotes e isolamento da RTL privada.
 
 Não há rádio ou placa de som física conectado ao ambiente. Os ensaios reproduzem
-o defeito de reserva identificado e verificam continuidade com dispositivos
-simulados; jitter fora da margem configurada ainda pode provocar underruns.
+o defeito identificado com dispositivos simulados. A margem é limitada; uma
+máquina que não sustente o processamento ainda pode apresentar underruns.

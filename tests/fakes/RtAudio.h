@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <stdexcept>
+#include <cassert>
 #ifndef SDRPP_TEST_RTAUDIO_VERSION
 #define SDRPP_TEST_RTAUDIO_VERSION 5
 #endif
@@ -21,7 +22,7 @@ public:
         std::vector<unsigned> sampleRates{44100,48000,96000};
     };
     struct StreamParameters { unsigned deviceId=0,nChannels=2; };
-    struct StreamOptions { unsigned flags=0; std::string streamName; };
+    struct StreamOptions { unsigned flags=0,numberOfBuffers=0; std::string streamName; };
     using Callback=int(*)(void*,void*,unsigned,double,RtAudioStreamStatus,void*);
     static inline RtAudio* current=nullptr;
     static inline unsigned channels=2;
@@ -38,7 +39,8 @@ public:
     DeviceInfo getDeviceInfo(unsigned) { DeviceInfo info; info.outputChannels=channels; return info; }
     Api getCurrentApi() { return LINUX_PULSE; }
     void setErrorCallback(void(*callback)(RtAudioErrorType,const std::string&)) { errorCallback=callback; }
-    void openStream(StreamParameters*,void*,unsigned,unsigned,unsigned*,Callback cb,void* ctx,StreamOptions*) {
+    void openStream(StreamParameters*,void*,unsigned,unsigned,unsigned*,Callback cb,void* ctx,StreamOptions* options) {
+        assert(options && options->numberOfBuffers==2);
         if(failOpen) throw std::runtime_error("test open failure");
         callback=cb; context=ctx; opened=true; ++openCount;
     }

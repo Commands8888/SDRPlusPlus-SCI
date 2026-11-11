@@ -96,6 +96,7 @@ if [ "${RUN_DSD_TESTS:-false}" = "true" ]; then
     # Run while this build container is alive, before packaging/upload.
     bash ../scripts/test_radio_gui_modes.sh "$PWD"
     bash ../scripts/test_radio_gui_modes.sh "$PWD" nr
+    bash ../scripts/test_radio_gui_modes.sh "$PWD" continuity
     bash ../scripts/test_noise_reduction.sh "$PWD"
     bash ../scripts/test_audio_flow.sh "$PWD" memory
     ASAN_OPTIONS=detect_leaks=0:quarantine_size_mb=32 \

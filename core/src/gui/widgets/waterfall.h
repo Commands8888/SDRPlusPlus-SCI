@@ -228,11 +228,13 @@ namespace ImGui {
         void onPositionChange();
         void onResize();
         void updateWaterfallFb();
+        void rebuildWaterfallFb();
         void updateWaterfallTexture();
         void updateAllVFOs(bool checkRedrawRequired = false);
         bool calculateVFOSignalInfo(float* fftLine, WaterfallVFO* vfo, float& strength, float& snr);
 
         bool waterfallUpdate = false;
+        bool waterfallRebuildPending = false;
 
         uint32_t waterfallPallet[WATERFALL_RESOLUTION];
 
@@ -247,6 +249,8 @@ namespace ImGui {
         ImGuiWindow* window;
 
         GLuint textureId;
+        int textureWidth = 0;
+        int textureHeight = 0;
 
         std::recursive_mutex buf_mtx;
         std::recursive_mutex latestFFTMtx;

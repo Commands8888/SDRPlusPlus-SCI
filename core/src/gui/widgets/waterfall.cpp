@@ -125,6 +125,8 @@ namespace ImGui {
 
     void WaterFall::init() {
         glGenTextures(1, &textureId);
+        textureWidth = 0;
+        textureHeight = 0;
     }
 
     void WaterFall::drawFFT() {
@@ -216,6 +218,10 @@ namespace ImGui {
     }
 
     void WaterFall::drawWaterfall() {
+        // draw() holds buf_mtx: rebuild once using the final view for this frame.
+        if (waterfallRebuildPending) {
+            rebuildWaterfallFb();
+        }
         if (waterfallUpdate) {
             waterfallUpdate = false;
             updateWaterfallTexture();
@@ -726,6 +732,12 @@ namespace ImGui {
     }
 
     void WaterFall::updateWaterfallFb() {
+        // Coalesce zoom, offset and layout changes before drawing the history.
+        waterfallRebuildPending = true;
+    }
+
+    void WaterFall::rebuildWaterfallFb() {
+        waterfallRebuildPending = false;
         if (!waterfallVisible || rawFFTs == NULL) {
             return;
         }
@@ -836,7 +848,14 @@ namespace ImGui {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, dataWidth, waterfallHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, (uint8_t*)waterfallFb);
+        if (textureWidth != dataWidth || textureHeight != waterfallHeight) {
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, dataWidth, waterfallHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, (uint8_t*)waterfallFb);
+            textureWidth = dataWidth;
+            textureHeight = waterfallHeight;
+        }
+        else {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, dataWidth, waterfallHeight, GL_RGBA, GL_UNSIGNED_BYTE, (uint8_t*)waterfallFb);
+        }
     }
 
     void WaterFall::onPositionChange() {

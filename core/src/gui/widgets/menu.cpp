@@ -227,6 +227,87 @@ bool Menu::draw(bool updateStates) {
     return changed;
 }
 
+
+bool Menu::drawHorizontal(bool updateStates) {
+    bool changed = false;
+
+    // Restore the selected section from the existing menu config. Older
+    // configs may have several expanded sections; the first available one is
+    // used as the initial tab.
+    if (activeTab.empty() || items.find(activeTab) == items.end()) {
+        activeTab.clear();
+        for (const MenuOption_t& opt : order) {
+            if (items.find(opt.name) != items.end() && opt.open) {
+                activeTab = opt.name;
+                break;
+            }
+        }
+        if (activeTab.empty()) {
+            for (const MenuOption_t& opt : order) {
+                if (items.find(opt.name) != items.end()) {
+                    activeTab = opt.name;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (ImGui::BeginTabBar("##sdrpp_bottom_menu_tabs", ImGuiTabBarFlags_FittingPolicyScroll)) {
+        // Index-based iteration is intentional: a module draw handler may
+        // register another menu while the Module Manager creates an instance.
+        for (size_t i = 0; i < order.size(); i++) {
+            MenuOption_t& opt = order[i];
+            auto itemIt = items.find(opt.name);
+            if (itemIt == items.end()) { continue; }
+
+            ImGuiTabItemFlags flags = ImGuiTabItemFlags_None;
+            if (updateStates && opt.name == activeTab) {
+                flags |= ImGuiTabItemFlags_SetSelected;
+            }
+
+            if (ImGui::BeginTabItem(opt.name.c_str(), NULL, flags)) {
+                if (activeTab != opt.name) {
+                    activeTab = opt.name;
+                    if (!updateStates) { changed = true; }
+                }
+
+                std::string contentId = "##sdrpp_menu_content_" + opt.name;
+                ImGui::BeginChild(contentId.c_str(), ImVec2(0, 0), false);
+
+                MenuItem_t& item = itemIt->second;
+                if (item.inst != NULL) {
+                    bool enabled = item.inst->isEnabled();
+                    std::string enableLabel = "Enabled##sdrpp_module_enabled_" + opt.name;
+                    if (ImGui::Checkbox(enableLabel.c_str(), &enabled)) {
+                        enabled ? item.inst->enable() : item.inst->disable();
+                        changed = true;
+                    }
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("%s", enabled ? "Module enabled" : "Module disabled");
+                    ImGui::Separator();
+                }
+
+                item.drawHandler(item.ctx);
+                ImGui::EndChild();
+                ImGui::EndTabItem();
+            }
+        }
+        ImGui::EndTabBar();
+    }
+
+    // Retain the existing menuElements setting: exactly one section is marked
+    // open, representing the currently selected horizontal tab.
+    for (MenuOption_t& opt : order) {
+        bool selected = (opt.name == activeTab);
+        if (opt.open != selected) {
+            opt.open = selected;
+            if (!updateStates) { changed = true; }
+        }
+    }
+
+    return changed;
+}
+
 bool Menu::isInOrderList(std::string name) {
     for (MenuOption_t opt : order) {
         if (opt.name == name) {

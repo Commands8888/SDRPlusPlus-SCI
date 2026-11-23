@@ -24,7 +24,6 @@ public:
     void registerEntry(std::string name, void (*drawHandler)(void* ctx), void* ctx = NULL, ModuleManager::Instance* inst = NULL);
     void removeEntry(std::string name);
     bool draw(bool updateStates);
-    bool drawHorizontal(bool updateStates);
 
     std::vector<MenuOption_t> order;
 
@@ -44,7 +43,6 @@ private:
     MenuOption_t draggedOpt;
 
     std::map<std::string, MenuItem_t> items;
-    std::string activeTab;
 
     float headerTops[MAX_MENU_COUNT];
     int optionIDs[MAX_MENU_COUNT];

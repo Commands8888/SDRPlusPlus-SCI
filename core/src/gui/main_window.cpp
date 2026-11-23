@@ -328,7 +328,7 @@ void MainWindow::draw() {
         uint64_t currentLayoutEpoch = style::scaleEpoch();
         if (currentLayoutEpoch != lastLayoutScaleEpoch) {
             lastLayoutScaleEpoch = currentLayoutEpoch;
-            const char* names[] = { "WaterfallArea", "Waterfall", "WaterfallControls", "BottomMenuDock" };
+            const char* names[] = { "Left Column", "Waterfall", "WaterfallControls" };
             ImGuiWindow* mainWindow = ImGui::GetCurrentWindow();
             for (const char* name : names) {
                 invalidateChildLayoutCache(mainWindow, name);
@@ -575,35 +575,209 @@ void MainWindow::draw() {
     // Reset waterfall lock
     lockWaterfallControls = showCredits;
 
-    // The waterfall remains the primary workspace. Module controls are
-    // docked below it so wide source, radio and demodulator options have room
-    // to breathe instead of being squeezed into a narrow sidebar.
-    displaymenu::checkKeybinds();
-
-    ImVec2 contentAvail = ImGui::GetContentRegionAvail();
-    float dockHeight = 0.0f;
-    if (showMenu) {
-        const float spacingY = ImGui::GetStyle().ItemSpacing.y;
-        const float minWaterfallHeight = style::dp(150.0f);
-        const float maxDockHeight = std::max(0.0f, contentAvail.y - minWaterfallHeight - spacingY);
-        const float preferredDockHeight = std::clamp(contentAvail.y * 0.36f, style::dp(170.0f), style::dp(300.0f));
-        dockHeight = (maxDockHeight > 0.0f)
-            ? std::min(preferredDockHeight, maxDockHeight)
-            : std::min(contentAvail.y * 0.38f, style::dp(140.0f));
+    // Handle menu resize
+    ImVec2 winSize = ImGui::GetWindowSize();
+    ImVec2 mousePos = ImGui::GetMousePos();
+#ifdef __ANDROID__
+    bool isWindowHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+#endif
+    if (showMenu && !grabbingMenu) {
+        int clampedMenuWidth = style::clampSplit(menuWidth, winSize.x, 250.0f, 250.0f);
+        if (clampedMenuWidth != menuWidth) {
+            menuWidth = clampedMenuWidth;
+            newWidth = clampedMenuWidth;
+        }
+    }
+#ifdef __ANDROID__
+    // Menu splitter pill: computed by the splitter handling below, drawn later
+    // inside the waterfall child so that floating windows (e.g. the KiwiSDR
+    // map popup) paint over it.
+    bool menuPillVisible = false;
+    ImVec2 menuPillCenter;
+#endif
+    if (!lockWaterfallControls && showMenu) {
+        float curY = ImGui::GetCursorPosY();
+        bool click = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        bool down = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+        float splitBottom = winSize.y - style::dp(10.0f);
+        if (grabbingMenu) {
+            newWidth = mousePos.x + menuGrabOffset;
+            newWidth = style::clampSplit(newWidth, winSize.x, 250.0f, 250.0f);
+            ImGui::GetForegroundDrawList()->AddLine(ImVec2(newWidth, curY), ImVec2(newWidth, splitBottom), ImGui::GetColorU32(ImGuiCol_SeparatorActive));
+        }
+#ifdef __ANDROID__
+        // Touch handling. A full-length fat hit band fights with the menu
+        // scrollbar sitting right against the splitter, so the fat target is a
+        // visible pill handle instead: it reaches over the waterfall's dB-scale
+        // strip (which takes no input) and grabs on touch-down. Along the rest
+        // of the line a touch is only accepted once the finger's first movement
+        // runs across the splitter — a vertical start means scrolling.
+        ImVec2 pillCenter(newWidth + style::dp(4.0f), curY + (splitBottom - curY) * 0.75f);
+        float pillHalfH = style::dp(16.0f);
+        bool inPillBox = mousePos.x >= newWidth - style::dp(2.0f) && mousePos.x <= newWidth + style::dp(30.0f) &&
+                         fabsf(mousePos.y - pillCenter.y) <= pillHalfH + style::dp(10.0f);
+        if (menuSplitterPending) {
+            float dx = mousePos.x - menuSplitterDownPos.x;
+            float dy = mousePos.y - menuSplitterDownPos.y;
+            if (!down) {
+                menuSplitterPending = false;
+            }
+            else if (std::max(fabsf(dx), fabsf(dy)) >= style::dp(6.0f)) {
+                menuSplitterPending = false;
+                if (fabsf(dx) > fabsf(dy)) {
+                    grabbingMenu = true;
+                    menuGrabOffset = newWidth - menuSplitterDownPos.x;
+                    backend::hapticTick();
+                }
+            }
+        }
+        else if (!grabbingMenu && click) {
+            // The pill hit box overlaps the waterfall child window, so hover of
+            // any child of the main window counts for it.
+            if (inPillBox && !ImGui::IsAnyItemActive() && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)) {
+                grabbingMenu = true;
+                menuGrabOffset = newWidth - mousePos.x;
+                backend::hapticTick();
+            }
+            else if (isWindowHovered && fabsf(mousePos.x - (float)newWidth) <= style::dp(20.0f) && mousePos.y > curY) {
+                menuSplitterPending = true;
+                menuSplitterDownPos = mousePos;
+            }
+        }
+        menuPillVisible = true;
+        menuPillCenter = pillCenter;
+#else
+        // The hit band straddles the Left Column and Waterfall children (and
+        // under the touch style FindHoveredWindow() grows their hover boxes by
+        // TouchExtraPadding, right over the band), so hover of any child of the
+        // main window counts for it. Floating windows and popups are separate
+        // top-level windows and still correctly block the splitter.
+        float separatorHitRadius = (2.0f * style::uiScale);
+        bool overSplit = fabsf(mousePos.x - (float)newWidth) <= separatorHitRadius && mousePos.y > curY;
+        if (grabbingMenu || (overSplit && !ImGui::IsAnyItemActive() && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem))) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+            if (click && !grabbingMenu) {
+                grabbingMenu = true;
+                menuGrabOffset = newWidth - mousePos.x;
+            }
+        }
+        else {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
+        }
+#endif
+        if (!down && grabbingMenu) {
+            grabbingMenu = false;
+            menuWidth = newWidth;
+            core::configManager.acquire();
+            core::configManager.conf["menuWidth"] = style::unscale(menuWidth);
+            core::configManager.release(true);
+#ifdef __ANDROID__
+            backend::hapticTick();
+#endif
+        }
     }
 
-    float waterfallAreaHeight = std::max(0.0f, contentAvail.y - dockHeight -
-        (dockHeight > 0.0f ? ImGui::GetStyle().ItemSpacing.y : 0.0f));
+    // Process menu keybinds
+    displaymenu::checkKeybinds();
 
-    ImGui::BeginChild("WaterfallArea", ImVec2(0, waterfallAreaHeight), false);
-    const float waterfallControlsWidth = style::dp(60.0f);
-    const float waterfallAreaWidth = ImGui::GetContentRegionAvail().x;
-    ImGui::Columns(2, "WaterfallColumns", false);
-    ImGui::SetColumnWidth(0, std::max(1.0f, waterfallAreaWidth - waterfallControlsWidth));
-    ImGui::SetColumnWidth(1, waterfallControlsWidth);
+    // Left Column
+    if (showMenu) {
+        ImGui::Columns(3, "WindowColumns", false);
+        ImGui::SetColumnWidth(0, menuWidth);
+        ImGui::SetColumnWidth(1, std::max<int>(winSize.x - menuWidth - (60.0f * style::uiScale), 100.0f * style::uiScale));
+        ImGui::SetColumnWidth(2, 60.0f * style::uiScale);
+        ImGui::BeginChild("Left Column");
 
-    ImGui::BeginChild("Waterfall", ImVec2(0, 0), false);
+        if (gui::menu.draw(firstMenuRender)) {
+            core::configManager.acquire();
+            json arr = json::array();
+            for (int i = 0; i < gui::menu.order.size(); i++) {
+                arr[i]["name"] = gui::menu.order[i].name;
+                arr[i]["open"] = gui::menu.order[i].open;
+            }
+            core::configManager.conf["menuElements"] = arr;
+
+            // Update enabled and disabled modules
+            for (auto [_name, inst] : core::moduleManager.instances) {
+                if (!core::configManager.conf["moduleInstances"].contains(_name)) { continue; }
+                core::configManager.conf["moduleInstances"][_name]["enabled"] = inst.instance->isEnabled();
+            }
+
+            core::configManager.release(true);
+        }
+        if (startedWithMenuClosed) {
+            startedWithMenuClosed = false;
+        }
+        else {
+            firstMenuRender = false;
+        }
+
+#ifdef SDRPP_ENABLE_DEBUG_MENU
+        if (ImGui::CollapsingHeader("Debug")) {
+            ImGui::Text("Frame time: %.3f ms/frame", ImGui::GetIO().DeltaTime * 1000.0f);
+            ImGui::Text("Framerate: %.1f FPS", ImGui::GetIO().Framerate);
+            ImGui::Text("Center Frequency: %.0f Hz", gui::waterfall.getCenterFrequency());
+            ImGui::Text("Source name: %s", sourceName.c_str());
+            ImGui::Checkbox("Show demo window", &demoWindow);
+            ImGui::Text("ImGui version: %s", ImGui::GetVersion());
+
+            // ImGui::Checkbox("Bypass buffering", &sigpath::iqFrontEnd.inputBuffer.bypass);
+
+            // ImGui::Text("Buffering: %d", (sigpath::iqFrontEnd.inputBuffer.writeCur - sigpath::iqFrontEnd.inputBuffer.readCur + 32) % 32);
+
+            if (ImGui::Button("Test Bug")) {
+                flog::error("Will this make the software crash?");
+            }
+
+            if (ImGui::Button("Testing something")) {
+                gui::menu.order[0].open = true;
+                firstMenuRender = true;
+            }
+
+            ImGui::Checkbox("WF Single Click", &gui::waterfall.VFOMoveSingleClick);
+            ImGui::Checkbox("Lock Menu Order", &gui::menu.locked);
+
+            ImGui::Spacing();
+        }
+#endif
+
+        ImGui::EndChild();
+    }
+    else {
+        // When hiding the menu bar
+        ImGui::Columns(3, "WindowColumns", false);
+        ImGui::SetColumnWidth(0, 8 * style::uiScale);
+        ImGui::SetColumnWidth(1, winSize.x - ((8 + 60) * style::uiScale));
+        ImGui::SetColumnWidth(2, 60.0f * style::uiScale);
+    }
+
+    // Right Column
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
+    ImGui::NextColumn();
+    ImGui::PopStyleVar();
+
+    ImGui::BeginChild("Waterfall");
+
     gui::waterfall.draw();
+
+#ifdef __ANDROID__
+    // Menu splitter drag handle (see the splitter handling above). Drawn into
+    // this child's draw list so floating windows and popups paint over it, with
+    // an expanded clip rect since it straddles the child's left edge. The dark
+    // backing keeps it readable on any theme.
+    if (menuPillVisible) {
+        float halfW = style::dp(grabbingMenu ? 6.0f : 4.5f);
+        float halfH = style::dp(16.0f) + (grabbingMenu ? style::dp(4.0f) : 0.0f);
+        float pad = style::dp(2.0f);
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->PushClipRectFullScreen();
+        dl->AddRectFilled(ImVec2(menuPillCenter.x - halfW - pad, menuPillCenter.y - halfH - pad), ImVec2(menuPillCenter.x + halfW + pad, menuPillCenter.y + halfH + pad), IM_COL32(0, 0, 0, 120), halfW + pad);
+        dl->AddRectFilled(ImVec2(menuPillCenter.x - halfW, menuPillCenter.y - halfH), ImVec2(menuPillCenter.x + halfW, menuPillCenter.y + halfH),
+                          grabbingMenu ? ImGui::GetColorU32(ImGuiCol_SeparatorActive) : IM_COL32(210, 210, 210, 200), halfW);
+        dl->PopClipRect();
+    }
+#endif
+
     ImGui::EndChild();
 
     if (!lockWaterfallControls) {
@@ -678,8 +852,7 @@ void MainWindow::draw() {
     }
 
     ImGui::NextColumn();
-    ImGui::NextColumn();
-    ImGui::BeginChild("WaterfallControls", ImVec2(0, 0), false);
+    ImGui::BeginChild("WaterfallControls");
 
     ImGui::SetCursorPosX((ImGui::GetWindowSize().x / 2.0) - (ImGui::CalcTextSize("Zoom").x / 2.0));
     ImGui::TextUnformatted("Zoom");
@@ -754,67 +927,10 @@ void MainWindow::draw() {
 
     ImGui::EndChild();
 
-    ImGui::Columns(1);
-    ImGui::EndChild();
-
     gui::waterfall.setFFTMin(fftMin);
     gui::waterfall.setFFTMax(fftMax);
     gui::waterfall.setWaterfallMin(fftMin);
     gui::waterfall.setWaterfallMax(fftMax);
-
-
-    if (showMenu) {
-        ImGui::BeginChild("BottomMenuDock", ImVec2(0, 0), true);
-
-        if (gui::menu.drawHorizontal(firstMenuRender)) {
-            core::configManager.acquire();
-            json arr = json::array();
-            for (int i = 0; i < gui::menu.order.size(); i++) {
-                arr[i]["name"] = gui::menu.order[i].name;
-                arr[i]["open"] = gui::menu.order[i].open;
-            }
-            core::configManager.conf["menuElements"] = arr;
-
-            // Persist module enabled/disabled states as before.
-            for (auto [_name, inst] : core::moduleManager.instances) {
-                if (!core::configManager.conf["moduleInstances"].contains(_name)) { continue; }
-                core::configManager.conf["moduleInstances"][_name]["enabled"] = inst.instance->isEnabled();
-            }
-            core::configManager.release(true);
-        }
-
-        if (startedWithMenuClosed) {
-            startedWithMenuClosed = false;
-        }
-        else {
-            firstMenuRender = false;
-        }
-
-#ifdef SDRPP_ENABLE_DEBUG_MENU
-        if (ImGui::CollapsingHeader("Debug")) {
-            ImGui::Text("Frame time: %.3f ms/frame", ImGui::GetIO().DeltaTime * 1000.0f);
-            ImGui::Text("Framerate: %.1f FPS", ImGui::GetIO().Framerate);
-            ImGui::Text("Center Frequency: %.0f Hz", gui::waterfall.getCenterFrequency());
-            ImGui::Text("Source name: %s", sourceName.c_str());
-            ImGui::Checkbox("Show demo window", &demoWindow);
-            ImGui::Text("ImGui version: %s", ImGui::GetVersion());
-
-            if (ImGui::Button("Test Bug")) {
-                flog::error("Will this make the software crash?");
-            }
-            if (ImGui::Button("Testing something")) {
-                if (!gui::menu.order.empty()) { gui::menu.order[0].open = true; }
-                firstMenuRender = true;
-            }
-
-            ImGui::Checkbox("WF Single Click", &gui::waterfall.VFOMoveSingleClick);
-            ImGui::Checkbox("Lock Menu Order", &gui::menu.locked);
-            ImGui::Spacing();
-        }
-#endif
-
-        ImGui::EndChild();
-    }
 
 #ifdef __ANDROID__
     // Exit confirmation, requested by holding the hamburger menu button.
